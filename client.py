@@ -35,11 +35,27 @@ async def press_key(key):
         return False
 
 async def clear_text(count):
-    """清空文字（发送多个退格键）"""
+    """清空文字 - 使用Ctrl+A全选+Delete删除，更高效"""
     try:
-        for _ in range(int(count)):
+        count = int(count)
+        print(f"  → 执行清空操作")
+
+        # 方法1：Ctrl+A全选 + Delete删除（适用于文本编辑器）
+        keyboard.press_and_release('ctrl+a')
+        await asyncio.sleep(0.05)
+        keyboard.press_and_release('delete')
+
+        # 等待一小段时间
+        await asyncio.sleep(0.1)
+
+        # 方法2：如果还有剩余字符，用退格键补充删除（兼容命令行等场景）
+        # 限制最多删除count个字符，避免过度删除
+        remaining = min(count, 3000)  # 最多3000个字符
+        for _ in range(remaining):
             keyboard.press_and_release('backspace')
-            await asyncio.sleep(0.01)  # 小延迟避免太快
+            await asyncio.sleep(0.005)  # 更快的删除速度
+
+        print(f"  ✓ 清空完成")
         return True
     except Exception as e:
         print(f"清空失败: {e}")
