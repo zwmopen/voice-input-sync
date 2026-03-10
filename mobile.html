@@ -86,6 +86,32 @@
             50% { opacity: 0.5; }
         }
 
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+            padding: 10px;
+            background: #e0e5ec;
+            border-radius: 10px;
+            box-shadow: inset 2px 2px 4px #b8bec7, inset -2px -2px 4px #ffffff;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #7a8194;
+            margin-top: 2px;
+        }
+
         .input-section {
             margin-bottom: 15px;
         }
@@ -214,6 +240,23 @@
         </div>
 
         <div class="neu-card">
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalChars">0</div>
+                    <div class="stat-label">总字数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="sessionChars">0</div>
+                    <div class="stat-label">本次字数</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="deleteTime">0s</div>
+                    <div class="stat-label">清空时长</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="neu-card">
             <div class="input-section">
                 <textarea id="textInput" placeholder="点击此输入框，使用手机语音输入法开始语音输入...
 
@@ -256,6 +299,8 @@
         let ws = null;
         let lastText = '';
         let typingTimeout = null;
+        let sessionCharCount = 0; // 本次输入的字数
+        const DELETE_SPEED = 0.012; // 每个字符删除需要的秒数（与电脑端一致）
 
         function connect() {
             const wsUrl = `ws://${window.location.hostname}:8765`;
@@ -312,6 +357,18 @@
             }, 1500);
         }
 
+        function updateStats() {
+            const text = document.getElementById('textInput').value;
+            const totalChars = text.length;
+
+            document.getElementById('totalChars').textContent = totalChars;
+            document.getElementById('sessionChars').textContent = sessionCharCount;
+
+            // 计算清空需要的时长（加20%余量）
+            const deleteTime = Math.ceil(totalChars * DELETE_SPEED * 1.2);
+            document.getElementById('deleteTime').textContent = deleteTime + 's';
+        }
+
         function sendBackspace() {
             sendData('backspace', '');
         }
@@ -319,32 +376,43 @@
         function sendEnter() {
             sendData('enter', '');
             document.getElementById('textInput').value += '\n';
+            sessionCharCount += 1;
+            updateStats();
         }
 
         function sendSpace() {
             sendData('text', ' ');
             document.getElementById('textInput').value += ' ';
+            sessionCharCount += 1;
+            updateStats();
         }
 
         function sendTab() {
             sendData('tab', '');
             document.getElementById('textInput').value += '    ';
+            sessionCharCount += 4;
+            updateStats();
         }
 
         function clearAll() {
             const text = document.getElementById('textInput').value;
             const length = text.length;
 
+            if (length === 0) return;
+
             // 清空本地输入框
             document.getElementById('textInput').value = '';
             lastText = '';
+            sessionCharCount = 0;
             document.getElementById('charCount').textContent = '0 字';
 
-            // 向电脑端发送对应数量的删除键
-            if (length > 0) {
-                // 发送清空命令，让电脑端执行多次删除
-                sendData('clear', length.toString());
-            }
+            // 更新统计
+            updateStats();
+
+            // 向电脑端发送清空命令，传递字符数量
+            sendData('clear', length.toString());
+
+            showSyncStatus();
         }
 
         function sendAll() {
@@ -365,12 +433,15 @@
             if (newContent) {
                 sendData('text', newContent);
                 lastText = text;
+                sessionCharCount += newContent.length; // 记录本次输入的字数
+                updateStats();
             }
         });
 
         // 页面加载后连接
         window.addEventListener('load', () => {
             connect();
+            updateStats();
         });
     </script>
 </body>
