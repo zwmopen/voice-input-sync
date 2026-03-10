@@ -299,8 +299,8 @@
         let ws = null;
         let lastText = '';
         let typingTimeout = null;
-        let sessionCharCount = 0; // 本次输入的字数
-        const DELETE_SPEED = 0.012; // 每个字符删除需要的秒数（与电脑端一致）
+        let sessionCharCount = 0;
+        const DELETE_SPEED = 0.012;
 
         function connect() {
             const wsUrl = `ws://${window.location.hostname}:8765`;
@@ -364,7 +364,6 @@
             document.getElementById('totalChars').textContent = totalChars;
             document.getElementById('sessionChars').textContent = sessionCharCount;
 
-            // 计算清空需要的时长（加20%余量）
             const deleteTime = Math.ceil(totalChars * DELETE_SPEED * 1.2);
             document.getElementById('deleteTime').textContent = deleteTime + 's';
         }
@@ -400,18 +399,13 @@
 
             if (length === 0) return;
 
-            // 清空本地输入框
             document.getElementById('textInput').value = '';
             lastText = '';
             sessionCharCount = 0;
             document.getElementById('charCount').textContent = '0 字';
 
-            // 更新统计
             updateStats();
-
-            // 向电脑端发送清空命令，传递字符数量
             sendData('clear', length.toString());
-
             showSyncStatus();
         }
 
@@ -429,11 +423,32 @@
 
             document.getElementById('charCount').textContent = `${text.length} 字`;
 
-            // 只发送新增的内容
             if (newContent) {
                 sendData('text', newContent);
                 lastText = text;
-                sessionCharCount += newContent.length; // 记录本次输入的字数
+                sessionCharCount += newContent.length;
+                updateStats();
+            }
+        });
+
+        // 监听手机键盘的删除键和回车键
+        document.getElementById('textInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+                // 检测到删除键
+                const text = e.target.value;
+                if (text.length > 0) {
+                    sendData('backspace', '');
+                    lastText = text.substring(0, text.length - 1);
+                    sessionCharCount = Math.max(0, sessionCharCount - 1);
+                    updateStats();
+                }
+            } else if (e.key === 'Enter') {
+                // 检测到回车键
+                e.preventDefault();
+                sendData('enter', '');
+                e.target.value += '\n';
+                lastText = e.target.value;
+                sessionCharCount += 1;
                 updateStats();
             }
         });
