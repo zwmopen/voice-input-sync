@@ -15,7 +15,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background: #e0e5ec;
             min-height: 100vh;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -27,31 +27,23 @@
             max-width: 600px;
         }
 
-        /* 拟态风格 */
         .neu-card {
             background: #e0e5ec;
             border-radius: 20px;
-            padding: 20px;
-            box-shadow: 8px 8px 16px #b8bec7, -8px -8px 16px #ffffff;
-            margin-bottom: 20px;
-        }
-
-        .neu-inset {
-            background: #e0e5ec;
-            border-radius: 15px;
-            box-shadow: inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff;
             padding: 15px;
+            box-shadow: 8px 8px 16px #b8bec7, -8px -8px 16px #ffffff;
+            margin-bottom: 15px;
         }
 
         .header {
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
         }
 
         .header h1 {
-            font-size: 28px;
+            font-size: 24px;
             color: #5a6170;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             font-weight: 700;
         }
 
@@ -95,35 +87,23 @@
         }
 
         .input-section {
-            margin-bottom: 20px;
-        }
-
-        .input-label {
-            font-size: 14px;
-            color: #7a8194;
-            margin-bottom: 12px;
-            display: block;
-            font-weight: 600;
-        }
-
-        .input-wrapper {
-            position: relative;
+            margin-bottom: 15px;
         }
 
         textarea {
             width: 100%;
-            min-height: 220px;
+            min-height: 180px;
             border: none;
             background: #e0e5ec;
             border-radius: 15px;
-            padding: 18px;
-            font-size: 18px;
+            padding: 15px;
+            font-size: 16px;
             resize: vertical;
             outline: none;
             box-shadow: inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff;
             font-family: inherit;
             color: #5a6170;
-            line-height: 1.6;
+            line-height: 1.5;
         }
 
         textarea::placeholder {
@@ -132,26 +112,26 @@
 
         .char-count {
             text-align: right;
-            font-size: 13px;
+            font-size: 12px;
             color: #7a8194;
-            margin-top: 10px;
+            margin-top: 8px;
             font-weight: 500;
         }
 
         .control-buttons {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-top: 20px;
+            gap: 10px;
+            margin-top: 15px;
         }
 
         .neu-button {
-            padding: 15px;
+            padding: 12px 8px;
             border: none;
             border-radius: 12px;
             background: #e0e5ec;
             box-shadow: 4px 4px 8px #b8bec7, -4px -4px 8px #ffffff;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             color: #5a6170;
             cursor: pointer;
@@ -159,7 +139,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
         }
 
         .neu-button:active {
@@ -167,7 +147,7 @@
         }
 
         .neu-button .icon {
-            font-size: 20px;
+            font-size: 18px;
         }
 
         .neu-button.primary {
@@ -188,40 +168,6 @@
 
         .neu-button.danger:active {
             box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.2);
-        }
-
-        .info-section {
-            margin-top: 20px;
-        }
-
-        .info-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 12px;
-            margin-bottom: 10px;
-            background: #e0e5ec;
-            border-radius: 12px;
-            box-shadow: 4px 4px 8px #b8bec7, -4px -4px 8px #ffffff;
-        }
-
-        .info-icon {
-            font-size: 24px;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(145deg, #667eea, #764ba2);
-            border-radius: 10px;
-            color: #fff;
-        }
-
-        .info-text {
-            flex: 1;
-            font-size: 13px;
-            color: #5a6170;
-            line-height: 1.5;
         }
 
         .sync-status {
@@ -269,7 +215,6 @@
 
         <div class="neu-card">
             <div class="input-section">
-                <label class="input-label">📝 输入区域（使用语音输入法）</label>
                 <textarea id="textInput" placeholder="点击此输入框，使用手机语音输入法开始语音输入...
 
 支持：豆包输入法、搜狗、讯飞等"></textarea>
@@ -277,17 +222,21 @@
             </div>
 
             <div class="control-buttons">
-                <button class="neu-button" onclick="sendBackspace()">
-                    <span class="icon">⌫</span>
-                    <span>删除</span>
+                <button class="neu-button danger" onclick="clearAll()">
+                    <span class="icon">🗑️</span>
+                    <span>清空</span>
                 </button>
                 <button class="neu-button" onclick="sendEnter()">
                     <span class="icon">↵</span>
                     <span>换行</span>
                 </button>
-                <button class="neu-button danger" onclick="clearText()">
-                    <span class="icon">🗑️</span>
-                    <span>清空</span>
+                <button class="neu-button primary" onclick="sendAll()">
+                    <span class="icon">📤</span>
+                    <span>发送全部</span>
+                </button>
+                <button class="neu-button" onclick="sendBackspace()">
+                    <span class="icon">⌫</span>
+                    <span>删除</span>
                 </button>
                 <button class="neu-button" onclick="sendSpace()">
                     <span class="icon">␣</span>
@@ -297,21 +246,6 @@
                     <span class="icon">⇥</span>
                     <span>Tab</span>
                 </button>
-                <button class="neu-button primary" onclick="sendAll()">
-                    <span class="icon">📤</span>
-                    <span>发送全部</span>
-                </button>
-            </div>
-        </div>
-
-        <div class="info-section">
-            <div class="info-item">
-                <div class="info-icon">💡</div>
-                <div class="info-text">在电脑上打开任意窗口，光标放在输入位置，手机端输入会自动同步</div>
-            </div>
-            <div class="info-item">
-                <div class="info-icon">🎯</div>
-                <div class="info-text">使用手机语音输入法（豆包等），识别更精准，麦克风质量更好</div>
             </div>
         </div>
     </div>
@@ -397,10 +331,20 @@
             document.getElementById('textInput').value += '    ';
         }
 
-        function clearText() {
+        function clearAll() {
+            const text = document.getElementById('textInput').value;
+            const length = text.length;
+
+            // 清空本地输入框
             document.getElementById('textInput').value = '';
             lastText = '';
             document.getElementById('charCount').textContent = '0 字';
+
+            // 向电脑端发送对应数量的删除键
+            if (length > 0) {
+                // 发送清空命令，让电脑端执行多次删除
+                sendData('clear', length.toString());
+            }
         }
 
         function sendAll() {

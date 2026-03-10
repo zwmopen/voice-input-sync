@@ -2,13 +2,25 @@
 
 **手机端语音输入 → 实时同步到电脑 → 自动打字到任意窗口**
 
-## 工作原理
+[![GitHub](https://img.shields.io/badge/GitHub-zwmopen/voice--input--sync-blue)](https://github.com/zwmopen/voice-input-sync)
+[![Python](https://img.shields.io/badge/Python-3.7+-green)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-1. 手机打开网页，用手机语音输入法（豆包等）语音转文字
-2. 文字通过 WebSocket 实时同步到电脑
-3. 电脑模拟键盘输入，直接"打"到当前光标位置
+---
 
-## 使用步骤
+## ✨ 特点
+
+- 🎤 **使用手机语音输入法** - 识别更准确，麦克风质量更好
+- ⚡ **实时同步** - 无需点击发送，即输即打
+- 🎯 **支持任意窗口** - Word、记事本、聊天框等所有应用
+- 🎨 **拟态风格UI** - 舒适美观的界面设计
+- 🔧 **丰富控制** - 文字、清空、换行、删除、Tab、空格
+- 🚀 **开机自启** - 支持后台自动启动
+- 📱 **跨平台** - 手机支持iOS/Android，电脑Windows
+
+---
+
+## 🚀 快速开始
 
 ### 1. 安装依赖
 
@@ -16,79 +28,152 @@
 pip install websockets keyboard
 ```
 
-### 2. 启动服务器
+### 2. 启动系统
 
 ```bash
-python server.py
+双击运行 start.bat
 ```
 
-### 3. 启动电脑客户端
+或手动启动：
 
 ```bash
+# 启动HTTP服务器
+python -m http.server 8000
+
+# 启动WebSocket服务器
+python server.py
+
+# 启动客户端
 python client.py
 ```
 
-### 4. 手机访问网页
+### 3. 手机连接
 
-用手机浏览器访问：`http://你的电脑IP:8000/mobile.html`
+1. 手机和电脑连接同一WiFi
+2. 手机浏览器访问显示的网址
+3. 使用语音输入法开始输入
 
-例如：`http://192.168.1.100:8000/mobile.html`
+---
 
-### 5. 开始使用
+## 📖 使用方法
 
-1. 在电脑上打开任意需要输入的窗口（记事本、Word、聊天框等）
-2. 光标放在输入位置
-3. 在手机网页上用语音输入法说话
-4. 文字自动在电脑上输入
+1. **电脑端**：打开任意窗口，光标放在输入位置
+2. **手机端**：点击输入框，使用语音输入法说话
+3. **自动同步**：文字实时出现在电脑上
 
-## 获取电脑 IP
+### 控制按钮
 
-Windows：
-```bash
-ipconfig
+| 按钮 | 功能 |
+|------|------|
+| 🗑️ 清空 | 清空手机和电脑端所有文字 |
+| ↵ 换行 | 发送回车键 |
+| 📤 发送全部 | 发送输入框中所有文字 |
+| ⌫ 删除 | 发送退格键 |
+| ␣ 空格 | 发送空格键 |
+| ⇥ Tab | 发送Tab键 |
+
+---
+
+## ⚙️ 开机自启
+
+### 方法1：启动文件夹（推荐）
+
+1. 按 `Win + R`，输入 `shell:startup`
+2. 右键 → 新建 → 快捷方式
+3. 位置：`D:\AICode\voice-input-sync\autostart.vbs`
+4. 完成
+
+### 方法2：任务计划程序
+
+1. Win + R → 输入 `taskschd.msc`
+2. 右侧点击"创建基本任务"
+3. 名称：语音输入同步
+4. 触发器：启动时
+5. 操作：启动程序
+6. 程序：`D:\AICode\voice-input-sync\autostart.vbs`
+
+---
+
+## 🔧 故障排查
+
+### 手机无法访问
+
+- ✅ 确保手机和电脑在同一WiFi
+- ✅ 关闭防火墙或添加端口例外
+- ✅ 检查路由器是否启用AP隔离
+
+### 文字没有输入
+
+- ✅ 检查client.py是否运行
+- ✅ 确保输入框有光标闪烁
+- ✅ 以管理员权限运行
+
+---
+
+## 📊 技术架构
+
+```
+手机语音输入
+    ↓
+WebSocket通信
+    ↓
+服务器中转
+    ↓
+keyboard模拟输入
+    ↓
+任意窗口显示
 ```
 
-找到 "IPv4 地址" 那行
+---
 
-## 简易 HTTP 服务器
+## 📁 文件说明
 
-如果没有 HTTP 服务器，可以用 Python 启动一个：
-
-```bash
-cd D:\AICode\voice-input-sync
-python -m http.server 8000
+```
+voice-input-sync/
+├── server.py          # WebSocket服务器
+├── client.py          # 电脑客户端
+├── mobile.html        # 手机端界面
+├── start.bat          # 一键启动脚本
+├── autostart.vbs      # 开机自启脚本
+├── 使用手册.md        # 详细使用手册
+└── README.md          # 本文件
 ```
 
-然后在手机浏览器访问：`http://你的电脑IP:8000/mobile.html`
+---
 
-## 特点
+## 🎯 应用场景
 
-- ✅ 使用手机端语音输入法（识别更准确）
-- ✅ 手机麦克风质量更好
-- ✅ 实时同步，即输即打
-- ✅ 支持任意窗口输入
-- ✅ 支持中文、标点、特殊字符
+- 📝 写文档（Word、Markdown）
+- 💬 聊天（微信、飞书、QQ）
+- 💻 编程（VS Code、记事本）
+- 📧 邮件（Outlook、Gmail）
+- 🎨 设计（Figma、Sketch）
 
-## 支持的语音输入法
+---
 
-- 豆包输入法（推荐）
-- 搜狗输入法
-- 讯飞输入法
-- 百度输入法
-- 手机自带语音输入
+## 📝 更新日志
 
-## 故障排查
+### v1.0.0 (2026-03-10)
+- ✅ 初始版本发布
+- ✅ 实时语音输入同步
+- ✅ 拟态风格UI设计
+- ✅ 清空功能同步电脑端
+- ✅ 开机自启支持
+- ✅ 详细使用手册
 
-**手机无法访问网页**
-- 检查电脑和手机是否在同一局域网
-- 检查防火墙是否允许 8000 端口
-- 尝试关闭防火墙测试
+---
 
-**文字没有输入**
-- 检查 client.py 是否在运行
-- 检查输入框是否获得焦点
-- 尝试以管理员权限运行 client.py
+## 📄 许可证
 
-**连接断开**
-- 服务器会自动重连
-- 检查 server.py 是否在运行
+MIT License
+
+---
+
+## 🤝 贡献
+
+欢迎提交Issue和Pull Request！
+
+---
+
+**作者**：zwmopen
+**GitHub**：https://github.com/zwmopen/voice-input-sync

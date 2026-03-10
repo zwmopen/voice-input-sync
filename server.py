@@ -41,6 +41,8 @@ async def handler(websocket, path):
                 print(f"[{timestamp}] 按键: Tab")
             elif msg_type == 'space':
                 print(f"[{timestamp}] 按键: 空格")
+            elif msg_type == 'clear':
+                print(f"[{timestamp}] 清空: {content}个字符")
 
     except websockets.exceptions.ConnectionClosed:
         pass

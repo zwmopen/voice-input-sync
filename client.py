@@ -34,6 +34,17 @@ async def press_key(key):
         print(f"按键失败: {e}")
         return False
 
+async def clear_text(count):
+    """清空文字（发送多个退格键）"""
+    try:
+        for _ in range(int(count)):
+            keyboard.press_and_release('backspace')
+            await asyncio.sleep(0.01)  # 小延迟避免太快
+        return True
+    except Exception as e:
+        print(f"清空失败: {e}")
+        return False
+
 async def receive_messages():
     """接收服务器消息"""
     print("正在连接服务器...")
@@ -75,6 +86,9 @@ async def receive_messages():
                         elif msg_type == 'space':
                             print(f"[{timestamp}] 空格")
                             await press_key('space')
+                        elif msg_type == 'clear':
+                            print(f"[{timestamp}] 清空: {content}个字符")
+                            await clear_text(content)
 
                     except json.JSONDecodeError as e:
                         print(f"JSON解析错误: {e}")
