@@ -1,4 +1,4 @@
-function Decode-Zh {
+﻿function Decode-Zh {
     param([string]$Base64Text)
     [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Base64Text))
 }

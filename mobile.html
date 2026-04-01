@@ -374,9 +374,29 @@
         let sessionCharCount = 0;
         let desktopReady = false;
         const DELETE_SPEED = 0.012;
+        const runtimeConfig = {
+            wsPort: 8765
+        };
+
+        async function loadRuntimeConfig() {
+            try {
+                const response = await fetch(`/runtime-config.json?ts=${Date.now()}`, {
+                    cache: 'no-store'
+                });
+                if (!response.ok) {
+                    return;
+                }
+                const data = await response.json();
+                if (typeof data.wsPort === 'number' && data.wsPort > 0) {
+                    runtimeConfig.wsPort = data.wsPort;
+                }
+            } catch (error) {
+                console.warn('读取运行配置失败，使用默认端口', error);
+            }
+        }
 
         function connect() {
-            const wsUrl = `ws://${window.location.hostname}:8765`;
+            const wsUrl = `ws://${window.location.hostname}:${runtimeConfig.wsPort || 8765}`;
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
@@ -546,7 +566,8 @@
         });
 
         // 页面加载后连接
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            await loadRuntimeConfig();
             connect();
             updateStats();
         });

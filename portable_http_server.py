@@ -1,3 +1,4 @@
+import argparse
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -10,7 +11,6 @@ def resolve_root() -> Path:
 
 
 ROOT = resolve_root()
-PORT = 8000
 
 
 class StaticHandler(SimpleHTTPRequestHandler):
@@ -18,9 +18,16 @@ class StaticHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="VoiceInputSync static HTTP server")
+    parser.add_argument("--port", type=int, default=8000)
+    return parser.parse_args()
+
+
 def main():
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), StaticHandler)
-    print(f"VoiceInputSync HTTP server listening on http://0.0.0.0:{PORT}")
+    args = parse_args()
+    server = ThreadingHTTPServer(("0.0.0.0", args.port), StaticHandler)
+    print(f"VoiceInputSync HTTP server listening on http://0.0.0.0:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

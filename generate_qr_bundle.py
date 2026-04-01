@@ -27,11 +27,12 @@ def build_svg(url: str, output_path: Path) -> None:
     output_path.write_text(buffer.getvalue().decode("utf-8"), encoding="utf-8")
 
 
-def build_html(url: str, svg_filename: str) -> str:
+def build_html(url: str, svg_filename: str, ws_port: int) -> str:
     safe_url = html.escape(url)
     safe_url_js = json.dumps(url, ensure_ascii=False)
     safe_svg = html.escape(svg_filename)
-    safe_ws_url_js = json.dumps(f"ws://{url.split('://', 1)[1].split('/', 1)[0].split(':', 1)[0]}:8765", ensure_ascii=False)
+    host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+    safe_ws_url_js = json.dumps(f"ws://{host}:{ws_port}", ensure_ascii=False)
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return f"""<!DOCTYPE html>
@@ -554,6 +555,7 @@ def main() -> int:
     parser.add_argument("--url", required=True)
     parser.add_argument("--svg", required=True)
     parser.add_argument("--html", required=True)
+    parser.add_argument("--ws-port", type=int, default=8765)
     args = parser.parse_args()
 
     svg_path = Path(args.svg).expanduser().resolve()
@@ -563,7 +565,7 @@ def main() -> int:
     html_path.parent.mkdir(parents=True, exist_ok=True)
 
     build_svg(args.url, svg_path)
-    html_path.write_text(build_html(args.url, svg_path.name), encoding="utf-8")
+    html_path.write_text(build_html(args.url, svg_path.name, args.ws_port), encoding="utf-8")
     return 0
 
 

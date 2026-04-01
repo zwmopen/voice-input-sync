@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -133,16 +134,23 @@ async def handler(websocket, path):
         await broadcast_presence()
 
 
-async def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="VoiceInputSync websocket relay server")
+    parser.add_argument("--port", type=int, default=8765)
+    return parser.parse_args()
+
+
+async def main(port: int):
     log("=" * 60)
     log("语音输入同步服务端")
     log(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log("服务地址: ws://0.0.0.0:8765")
+    log(f"服务地址: ws://0.0.0.0:{port}")
     log("等待连接...")
 
-    async with websockets.serve(handler, "0.0.0.0", 8765):
+    async with websockets.serve(handler, "0.0.0.0", port):
         await asyncio.Future()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    args = parse_args()
+    asyncio.run(main(args.port))

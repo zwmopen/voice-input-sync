@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import os
@@ -31,6 +32,12 @@ def resolve_log_file() -> Path:
 
 
 LOG_FILE = resolve_log_file()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="VoiceInputSync desktop typing client")
+    parser.add_argument("--ws-url", default=SERVER_URL)
+    return parser.parse_args()
 
 
 def log(message: str) -> None:
@@ -93,12 +100,12 @@ async def smart_clear(char_count: str) -> bool:
         return False
 
 
-async def receive_messages() -> None:
-    log("正在连接服务器...")
+async def receive_messages(server_url: str) -> None:
+    log(f"正在连接服务器: {server_url}")
 
     while True:
         try:
-            async with websockets.connect(SERVER_URL) as websocket:
+            async with websockets.connect(server_url) as websocket:
                 await register_desktop(websocket)
                 log("已连接到服务器，等待手机输入。")
 
@@ -141,11 +148,12 @@ async def receive_messages() -> None:
 
 
 if __name__ == "__main__":
+    args = parse_args()
     log("=" * 60)
     log("语音输入同步 - 电脑端客户端")
     log(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        asyncio.run(receive_messages())
+        asyncio.run(receive_messages(args.ws_url))
     except KeyboardInterrupt:
         log("客户端已退出")

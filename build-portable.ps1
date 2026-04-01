@@ -89,6 +89,7 @@ Copy-Item (Join-Path $projectRoot "mobile.html") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "favicon.svg") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "site.webmanifest") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-stop.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "使用手册.md") $runtimeRoot -Force -ErrorAction SilentlyContinue
@@ -99,6 +100,7 @@ Copy-Item (Join-Path $projectRoot "share-user-guide.html") (Join-Path $packageRo
 
 Set-Content -Path (Join-Path $packageRoot "latest-url.txt") -Value "" -Encoding UTF8
 Set-Content -Path (Join-Path $packageRoot "手机打开这个地址.txt") -Value "启动后，这里会自动写入手机要打开的地址。" -Encoding UTF8
+Set-Content -Path (Join-Path $runtimeRoot "runtime-config.json") -Value '{"httpPort":8000,"wsPort":8765}' -Encoding UTF8
 Set-Content -Path (Join-Path $packageRoot "手机扫码打开.html") -Value @"
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -327,15 +329,9 @@ Set-Content -Path (Join-Path $packageRoot "手机扫码打开.html") -Value @"
 $startBat = @"
 @echo off
 setlocal
-title 语音输入同步
-chcp 65001 >nul
 cd /d "%~dp0"
-echo.
-echo 语音输入同步正在启动，请稍候 5 到 10 秒...
-echo 正在检查环境并准备扫码页...
-echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0_runtime\portable-start.ps1"
-exit /b %ERRORLEVEL%
+start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0_runtime\portable-launch-ui.ps1"
+exit /b 0
 "@
 Write-TextFile -Path (Join-Path $packageRoot "双击启动语音输入同步.bat") -Content $startBat -Encoding $utf8Bom
 
@@ -348,7 +344,7 @@ cd /d "%~dp0"
 echo.
 echo 正在申请管理员权限，请稍候几秒...
 echo.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -Verb RunAs -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File ""%~dp0_runtime\portable-start.ps1""'"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -Verb RunAs -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""%~dp0_runtime\portable-launch-ui.ps1""'"
 exit /b %ERRORLEVEL%
 "@
 Write-TextFile -Path (Join-Path $packageRoot "如果输入没反应-请用管理员启动.bat") -Content $adminBat -Encoding $utf8Bom
