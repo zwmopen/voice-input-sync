@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#3f86ff">
     <title>语音输入同步</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/assets/voice-sync-icon.svg">
+    <link rel="manifest" href="/site.webmanifest">
     <style>
         * {
             margin: 0;
@@ -43,8 +47,15 @@
         .header h1 {
             font-size: 24px;
             color: #5a6170;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             font-weight: 700;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            line-height: 1.6;
+            color: #7a8194;
+            margin-bottom: 12px;
         }
 
         .status-badge {
@@ -110,6 +121,56 @@
             font-size: 12px;
             color: #7a8194;
             margin-top: 2px;
+        }
+
+        .guide-card {
+            padding: 18px;
+        }
+
+        .guide-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #495161;
+            margin-bottom: 8px;
+        }
+
+        .guide-text {
+            font-size: 14px;
+            color: #778092;
+            line-height: 1.7;
+            margin-bottom: 12px;
+        }
+
+        .guide-steps {
+            display: grid;
+            gap: 8px;
+        }
+
+        .guide-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #e0e5ec;
+            box-shadow: inset 2px 2px 5px #b8bec7, inset -2px -2px 5px #ffffff;
+            color: #5a6170;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .step-badge {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(145deg, #667eea, #764ba2);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            flex: 0 0 auto;
         }
 
         .input-section {
@@ -232,10 +293,21 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎤 语音同步</h1>
+            <h1>🎤 语音输入同步</h1>
+            <div class="subtitle">手机说话，电脑同步打字。先在电脑上点好光标，再开始输入。</div>
             <div class="status-badge disconnected" id="statusBadge">
                 <span class="status-dot"></span>
                 <span id="statusText">未连接</span>
+            </div>
+        </div>
+
+        <div class="neu-card guide-card">
+            <div class="guide-title">第一次用，先看这三步</div>
+            <div class="guide-text">这个页面只负责把你的输入同步到电脑当前光标位置，不会替你决定输入到哪里。</div>
+            <div class="guide-steps">
+                <div class="guide-step"><span class="step-badge">1</span><span>先去电脑上，把光标点到你要输入的位置。</span></div>
+                <div class="guide-step"><span class="step-badge">2</span><span>保持这个手机页面开着，直接语音输入或手动输入。</span></div>
+                <div class="guide-step"><span class="step-badge">3</span><span>如果手机已连接但电脑不打字，请回电脑使用管理员启动。</span></div>
             </div>
         </div>
 
@@ -293,13 +365,14 @@
         </div>
     </div>
 
-    <div class="sync-status" id="syncStatus">✓ 已同步</div>
+    <div class="sync-status" id="syncStatus">✓ 已发送到电脑</div>
 
     <script>
         let ws = null;
         let lastText = '';
         let typingTimeout = null;
         let sessionCharCount = 0;
+        let desktopReady = false;
         const DELETE_SPEED = 0.012;
 
         function connect() {
@@ -309,17 +382,31 @@
             ws.onopen = () => {
                 console.log('已连接到服务器');
                 updateStatus(true);
+                ws.send(JSON.stringify({ type: 'register', role: 'mobile' }));
             };
 
             ws.onclose = () => {
                 console.log('连接断开，3秒后重连');
                 updateStatus(false);
+                desktopReady = false;
                 setTimeout(connect, 3000);
             };
 
             ws.onerror = (error) => {
                 console.error('连接错误:', error);
                 updateStatus(false);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'presence') {
+                        const connected = data.connected || {};
+                        desktopReady = !!connected.desktop;
+                    }
+                } catch (error) {
+                    console.error('状态消息解析失败:', error);
+                }
             };
         }
 
@@ -350,6 +437,11 @@
 
         function showSyncStatus() {
             const status = document.getElementById('syncStatus');
+            if (!desktopReady) {
+                status.textContent = '电脑输入端未就绪，请回电脑使用管理员启动';
+            } else {
+                status.textContent = '✓ 已发送到电脑';
+            }
             status.classList.add('show');
             clearTimeout(typingTimeout);
             typingTimeout = setTimeout(() => {

@@ -1,151 +1,151 @@
 """
 电脑端客户端
-接收手机端文字并模拟键盘输入到当前窗口
-支持智能清空（根据字数计算删除时长）
+接收手机端文字并模拟键盘输入到当前窗口，同时把运行日志写入文件。
 """
 
+from __future__ import annotations
+
 import asyncio
-import websockets
 import json
-import keyboard
+import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# 解决Windows编码问题
-import os
-os.environ['PYTHONIOENCODING'] = 'utf-8'
+import keyboard
+import websockets
 
+
+os.environ["PYTHONIOENCODING"] = "utf-8"
 SERVER_URL = "ws://localhost:8765"
+DELETE_SPEED = 0.01
 
-# 删除速度配置（每个字符需要的秒数）
-DELETE_SPEED = 0.01  # 10ms一个字符，每秒可删除100个字符
 
-async def type_text(text):
-    """模拟键盘输入"""
+def resolve_log_file() -> Path:
+    if getattr(sys, "frozen", False):
+        base_dir = Path(sys.executable).resolve().parent.parent / "logs"
+    else:
+        base_dir = Path(__file__).resolve().parent / "logs"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    return base_dir / "client-runtime.log"
+
+
+LOG_FILE = resolve_log_file()
+
+
+def log(message: str) -> None:
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{stamp}] {message}"
+    print(line, flush=True)
+    with LOG_FILE.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+async def register_desktop(websocket) -> None:
+    await websocket.send(json.dumps({"type": "register", "role": "desktop"}, ensure_ascii=False))
+    log("已向服务端注册桌面输入客户端。")
+
+
+async def type_text(text: str) -> bool:
     try:
         keyboard.write(text, delay=0.01)
+        log(f"输入成功: {text[:40]}")
         return True
-    except Exception as e:
-        print(f"输入失败: {e}")
+    except Exception as error:
+        log(f"输入失败: {error}")
         return False
 
-async def press_key(key):
-    """模拟按键"""
+
+async def press_key(key: str) -> bool:
     try:
         keyboard.press_and_release(key)
+        log(f"按键成功: {key}")
         return True
-    except Exception as e:
-        print(f"按键失败: {e}")
+    except Exception as error:
+        log(f"按键失败: {error}")
         return False
 
-async def smart_clear(char_count):
-    """
-    智能清空 - 根据字符数量计算删除时长
 
-    策略：
-    1. 先尝试 Ctrl+A全选 + Delete删除（适用于大多数文本编辑器）
-    2. 再用退格键补充删除（适用于命令行等不支持全选的场景）
-    3. 根据字符数量计算需要的删除时长
-    """
+async def smart_clear(char_count: str) -> bool:
     try:
-        char_count = int(char_count)
-        print(f"  → 智能清空 {char_count} 个字符")
+        char_count_int = int(char_count)
+        log(f"智能清空开始: {char_count_int} 个字符")
 
-        # 方法1：Ctrl+A全选 + Delete（快速）
-        keyboard.press_and_release('ctrl+a')
+        keyboard.press_and_release("ctrl+a")
         await asyncio.sleep(0.05)
-        keyboard.press_and_release('delete')
+        keyboard.press_and_release("delete")
         await asyncio.sleep(0.1)
 
-        # 方法2：补充退格键删除（兼容命令行等场景）
-        # 计算需要的删除时长，每个字符约10ms
-        delete_count = min(char_count, 5000)  # 最多删除5000个字符
-
-        # 计算实际需要的删除时长（加20%余量）
+        delete_count = min(char_count_int, 5000)
         delete_duration = delete_count * DELETE_SPEED * 1.2
+        log(f"补充退格删除: {delete_count} 个字符，预计 {delete_duration:.1f} 秒")
 
-        print(f"  → 补充退格删除：{delete_count}个字符，预计{delete_duration:.1f}秒")
-
-        # 执行快速退格删除
-        for i in range(delete_count):
-            keyboard.press_and_release('backspace')
-            # 每100个字符输出一次进度
-            if (i + 1) % 100 == 0:
-                print(f"  → 已删除 {i+1}/{delete_count} 个字符")
+        for index in range(delete_count):
+            keyboard.press_and_release("backspace")
+            if (index + 1) % 100 == 0:
+                log(f"已删除 {index + 1}/{delete_count} 个字符")
             await asyncio.sleep(DELETE_SPEED)
 
-        print(f"  ✓ 清空完成")
+        log("清空完成")
         return True
-    except Exception as e:
-        print(f"清空失败: {e}")
+    except Exception as error:
+        log(f"清空失败: {error}")
         return False
 
-async def receive_messages():
-    """接收服务器消息"""
-    print("正在连接服务器...")
+
+async def receive_messages() -> None:
+    log("正在连接服务器...")
 
     while True:
         try:
             async with websockets.connect(SERVER_URL) as websocket:
-                print("=" * 60)
-                print("已连接到服务器")
-                print("=" * 60)
-                print()
-                print("手机端界面保持打开状态即可")
-                print("在电脑上打开任意窗口，光标放在输入位置")
-                print("手机端输入/操作会自动同步到电脑")
-                print()
-                print("智能清空：根据字数计算删除时长")
-                print(f"删除速度：每秒约 {int(1/DELETE_SPEED)} 个字符")
-                print()
-                print("等待手机输入...")
-                print("-" * 60)
+                await register_desktop(websocket)
+                log("已连接到服务器，等待手机输入。")
 
                 async for message in websocket:
                     try:
                         data = json.loads(message)
-                        msg_type = data.get('type')
-                        content = data.get('content', '')
+                        msg_type = data.get("type")
+                        content = data.get("content", "")
 
-                        timestamp = datetime.now().strftime('%H:%M:%S')
+                        if msg_type == "presence":
+                            connected = data.get("connected", {})
+                            log(
+                                "连接状态更新: 手机={0} 电脑输入端={1}".format(
+                                    connected.get("mobile", False),
+                                    connected.get("desktop", False),
+                                )
+                            )
+                            continue
 
-                        if msg_type == 'text':
-                            print(f"[{timestamp}] 文字: {content}")
+                        if msg_type == "text":
                             await type_text(content)
-                        elif msg_type == 'backspace':
-                            print(f"[{timestamp}] 退格")
-                            await press_key('backspace')
-                        elif msg_type == 'enter':
-                            print(f"[{timestamp}] 回车")
-                            await press_key('enter')
-                        elif msg_type == 'tab':
-                            print(f"[{timestamp}] Tab")
-                            await press_key('tab')
-                        elif msg_type == 'space':
-                            print(f"[{timestamp}] 空格")
-                            await press_key('space')
-                        elif msg_type == 'clear':
-                            print(f"[{timestamp}] 清空: {content}个字符")
+                        elif msg_type == "backspace":
+                            await press_key("backspace")
+                        elif msg_type == "enter":
+                            await press_key("enter")
+                        elif msg_type == "tab":
+                            await press_key("tab")
+                        elif msg_type == "space":
+                            await press_key("space")
+                        elif msg_type == "clear":
                             await smart_clear(content)
-
-                    except json.JSONDecodeError as e:
-                        print(f"JSON解析错误: {e}")
-
-        except (websockets.exceptions.ConnectionClosed, ConnectionError) as e:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 连接断开，3秒后重连...")
+                    except json.JSONDecodeError as error:
+                        log(f"JSON解析错误: {error}")
+        except (websockets.exceptions.ConnectionClosed, ConnectionError):
+            log("连接断开，3秒后重连...")
             await asyncio.sleep(3)
-        except Exception as e:
-            print(f"错误: {e}")
+        except Exception as error:
+            log(f"客户端错误: {error}")
             await asyncio.sleep(3)
+
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("语音输入同步 - 电脑端客户端")
-    print("=" * 60)
-    print(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print()
+    log("=" * 60)
+    log("语音输入同步 - 电脑端客户端")
+    log(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
         asyncio.run(receive_messages())
     except KeyboardInterrupt:
-        print("\n\n已退出")
+        log("客户端已退出")

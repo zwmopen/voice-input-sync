@@ -20,3 +20,24 @@ Thumbs.db
 .env
 venv/
 env/
+.build-venv/
+
+# Build artifacts
+.pyinstaller-portable/
+release/
+backup/
+dist/
+build/
+
+# Runtime state
+logs/
+latest-url.txt
+.browser-opened-at
+.setup-complete
+
+# Local launchers
+*.lnk
+
+# Generated icon exports
+assets/voice-sync-icon.ico
+assets/voice-sync-icon.png
