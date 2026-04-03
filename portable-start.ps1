@@ -67,7 +67,8 @@ function Write-Status {
         [int]$Percent = 0,
         [string]$Url = "",
         [string]$PageTarget = "",
-        [bool]$OpenHandled = $false
+        [bool]$OpenHandled = $false,
+        [bool]$ReuseSession = $false
     )
 
     $statusDir = Split-Path -Parent $StatusOutputFile
@@ -84,6 +85,7 @@ function Write-Status {
         url = $Url
         pageTarget = $PageTarget
         openHandled = $OpenHandled
+        reuseSession = $ReuseSession
         updatedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
@@ -749,13 +751,17 @@ try {
 
             Start-TrayResident | Out-Null
             Write-Log ("Reused existing running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
-            Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话，没有重复启动。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
+            Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话，没有重复启动。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened -ReuseSession $true
             return
         }
 
         $existingStatus = Read-Status
         if ($existingStatus -and $existingStatus.state) {
-            Write-Status -State ([string]$existingStatus.state) -Title ([string]$existingStatus.title) -Detail ([string]$existingStatus.detail) -Emoji ([string]$existingStatus.emoji) -Percent ([int]$existingStatus.percent) -Url ([string]$existingStatus.url) -PageTarget ([string]$existingStatus.pageTarget) -OpenHandled ([bool]$existingStatus.openHandled)
+            $reuseSession = $false
+            if ($null -ne $existingStatus.PSObject.Properties["reuseSession"]) {
+                $reuseSession = [bool]$existingStatus.reuseSession
+            }
+            Write-Status -State ([string]$existingStatus.state) -Title ([string]$existingStatus.title) -Detail ([string]$existingStatus.detail) -Emoji ([string]$existingStatus.emoji) -Percent ([int]$existingStatus.percent) -Url ([string]$existingStatus.url) -PageTarget ([string]$existingStatus.pageTarget) -OpenHandled ([bool]$existingStatus.openHandled) -ReuseSession $reuseSession
         } else {
             Write-Status -State "running" -Title "已经在启动中" -Detail "上一个启动流程还没结束，请稍候几秒。" -Emoji "⏳" -Percent 18
         }
@@ -784,7 +790,7 @@ try {
 
         Start-TrayResident | Out-Null
         Write-Log ("Reused healthy running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
-        Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
+        Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened -ReuseSession $true
         return
     }
 
@@ -837,7 +843,7 @@ try {
         $pageOpened = Try-OpenPageWithCooldown -Target $pageTarget -Url $url
     }
     Write-Log "Startup result: HTTP=$httpOk WS=$wsOk CLIENT=$clientOk QR=$qrOk URL=$url"
-    Write-Status -State "success" -Title "启动好了" -Detail "扫码页已经准备好，马上为你打开。" -Emoji "✅" -Percent 100 -Url $url -PageTarget $pageTarget -OpenHandled $pageOpened
+    Write-Status -State "success" -Title "启动好了" -Detail "扫码页已经准备好，马上为你打开。" -Emoji "✅" -Percent 100 -Url $url -PageTarget $pageTarget -OpenHandled $pageOpened -ReuseSession $false
 
     if (-not $Silent) {
         Write-Host ""

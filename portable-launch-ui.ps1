@@ -17,6 +17,7 @@ $StatusFile = Join-Path $LogsDir "startup-status.json"
 $StartupLog = Join-Path $LogsDir "startup.log"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
+$ServerRuntimeLog = Join-Path $BaseDir "logs\server-runtime.log"
 $LauncherMutexName = "Local\VoiceInputSyncPortableLauncher"
 $script:LauncherMutex = $null
 $script:OwnsLauncherMutex = $false
@@ -26,6 +27,8 @@ $script:CurrentUrl = ""
 $script:CurrentTarget = ""
 $script:CurrentState = "running"
 $script:CurrentPercent = 12
+$script:SuccessSeenAt = $null
+$script:LastNetworkHint = ""
 $script:TipMessages = @(
     "The page opens automatically when the service is ready.",
     "If the app is already running, this launch reuses the current session.",
@@ -148,6 +151,74 @@ function New-Brush {
     param([string]$Color)
 
     return [System.Windows.Media.BrushConverter]::new().ConvertFromString($Color)
+}
+
+function Get-PrimaryNetworkInfo {
+    $configs = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue | Where-Object {
+        $_.IPv4Address -and $_.IPv4DefaultGateway
+    })
+
+    $candidates = foreach ($config in $configs) {
+        $ipv4 = ($config.IPv4Address | Select-Object -First 1).IPAddress
+        if (-not $ipv4 -or $ipv4 -like "169.254*") {
+            continue
+        }
+
+        $priority = if ($config.InterfaceAlias -match "Wi-?Fi|WLAN") { 1 } elseif ($config.InterfaceAlias -match "Ethernet") { 2 } else { 9 }
+        [pscustomobject]@{
+            InterfaceAlias = [string]$config.InterfaceAlias
+            IPv4 = [string]$ipv4
+            Priority = $priority
+        }
+    }
+
+    $primary = $candidates | Sort-Object Priority | Select-Object -First 1
+    if (-not $primary) {
+        return $null
+    }
+
+    $profile = Get-NetConnectionProfile -InterfaceAlias $primary.InterfaceAlias -ErrorAction SilentlyContinue | Select-Object -First 1
+    [pscustomobject]@{
+        InterfaceAlias = $primary.InterfaceAlias
+        IPv4 = $primary.IPv4
+        NetworkCategory = if ($profile) { [string]$profile.NetworkCategory } else { "" }
+    }
+}
+
+function Get-ServerConnectionInsight {
+    param([string]$LocalIp)
+
+    $result = [pscustomobject]@{
+        ExternalHit = $false
+        ExternalIps = @()
+        SelfInvalidToken = $false
+    }
+
+    if (-not (Test-Path $ServerRuntimeLog)) {
+        return $result
+    }
+
+    $lines = @(Get-Content $ServerRuntimeLog -Tail 160 -ErrorAction SilentlyContinue)
+    foreach ($line in $lines) {
+        if ($line -match "client connected: \('([^']+)',") {
+            $ip = [string]$matches[1]
+            if ($ip -and $ip -ne "127.0.0.1" -and $ip -ne $LocalIp) {
+                $result.ExternalHit = $true
+                if ($result.ExternalIps -notcontains $ip) {
+                    $result.ExternalIps += $ip
+                }
+            }
+        }
+
+        if ($line -match "register rejected: invalid token from \('([^']+)',") {
+            $ip = [string]$matches[1]
+            if ($ip -eq $LocalIp) {
+                $result.SelfInvalidToken = $true
+            }
+        }
+    }
+
+    return $result
 }
 
 function Set-BadgeState {
@@ -673,7 +744,9 @@ try {
                 Update-ProgressFill -Percent 100
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
-                $script:FooterText.Text = [string]$status.detail
+                if (-not $script:SuccessSeenAt) {
+                    $script:SuccessSeenAt = Get-Date
+                }
                 $script:OpenButton.Visibility = "Visible"
                 if (-not [string]::IsNullOrWhiteSpace($script:CurrentUrl)) {
                     $script:CopyButton.Visibility = "Visible"
@@ -681,10 +754,53 @@ try {
                     $script:CopyButton.Visibility = "Collapsed"
                 }
                 $script:LogButton.Visibility = "Collapsed"
-                $isReuseSuccess = ([string]$status.title -like "*已经在运行*")
-                if (-not $NoAutoClose -and -not $script:AutoCloseArmed -and -not $isReuseSuccess) {
-                    $script:AutoCloseArmed = $true
-                    $closeTimer.Start()
+                $reuseSession = $false
+                if ($null -ne $status.PSObject.Properties["reuseSession"]) {
+                    $reuseSession = [bool]$status.reuseSession
+                }
+
+                $networkInfo = Get-PrimaryNetworkInfo
+                $localIp = ""
+                if ($networkInfo) {
+                    $localIp = [string]$networkInfo.IPv4
+                }
+                $connectionInsight = Get-ServerConnectionInsight -LocalIp $localIp
+                $elapsedSuccessSeconds = [int](([datetime](Get-Date)) - $script:SuccessSeenAt).TotalSeconds
+
+                if ($connectionInsight.ExternalHit) {
+                    $remoteText = (($connectionInsight.ExternalIps | Select-Object -First 3) -join " / ")
+                    $script:TipText.Text = Get-Text @(0x5DF2,0x7ECF,0x68C0,0x6D4B,0x5230,0x624B,0x673A,0x6216,0x5176,0x4ED6,0x8BBE,0x5907,0x6253,0x5230,0x8FD9,0x53F0,0x7535,0x8111,0x3002)
+                    $script:FooterText.Text = (Get-Text @(0x5916,0x90E8,0x8BBE,0x5907,0x6765,0x6E90,0xFF1A)) + $remoteText
+                    if (-not $NoAutoClose -and -not $script:AutoCloseArmed -and -not $reuseSession) {
+                        $script:AutoCloseArmed = $true
+                        $closeTimer.Start()
+                    }
+                } else {
+                    $script:AutoCloseArmed = $false
+                    $networkSummary = if ($networkInfo) {
+                        (Get-Text @(0x5F53,0x524D,0x7F51,0x7EDC,0xFF1A)) + ("{0} / {1} / {2}" -f $networkInfo.InterfaceAlias, $networkInfo.NetworkCategory, $networkInfo.IPv4)
+                    } elseif (-not [string]::IsNullOrWhiteSpace($localIp)) {
+                        (Get-Text @(0x5F53,0x524D,0x7F51,0x7EDC,0x20,0x49,0x50,0xFF1A)) + $localIp
+                    } else {
+                        [string]$status.detail
+                    }
+
+                    if ($elapsedSuccessSeconds -ge 12) {
+                        $script:TipText.Text = Get-Text @(0x8FD8,0x6CA1,0x6709,0x4EFB,0x4F55,0x624B,0x673A,0x771F,0x6B63,0x6253,0x5230,0x8FD9,0x53F0,0x7535,0x8111,0x3002,0x901A,0x5E38,0x662F,0x6CA1,0x8FDE,0x540C,0x4E00,0x4E2A,0x20,0x57,0x69,0x2D,0x46,0x69,0xFF0C,0x6216,0x8005,0x8DEF,0x7531,0x5668,0x5F00,0x4E86,0x20,0x41,0x50,0x20,0x9694,0x79BB,0x3002)
+                    } elseif ($connectionInsight.SelfInvalidToken) {
+                        $script:TipText.Text = Get-Text @(0x8FD9,0x53F0,0x7535,0x8111,0x521A,0x521A,0x8FD8,0x5728,0x8BF7,0x6C42,0x65E7,0x4E8C,0x7EF4,0x7801,0x3002,0x8BF7,0x91CD,0x65B0,0x626B,0x73B0,0x5728,0x5F39,0x51FA,0x7684,0x65B0,0x4E8C,0x7EF4,0x7801,0x3002)
+                    } elseif ($networkInfo -and $networkInfo.NetworkCategory -eq "Public" -and $elapsedSuccessSeconds -ge 6) {
+                        $script:TipText.Text = Get-Text @(0x5F53,0x524D,0x20,0x57,0x69,0x2D,0x46,0x69,0x20,0x88AB,0x8BC6,0x522B,0x4E3A,0x516C,0x5171,0x7F51,0x7EDC,0x3002,0x624B,0x673A,0x6253,0x4E0D,0x5F00,0x65F6,0xFF0C,0x5148,0x786E,0x8BA4,0x548C,0x7535,0x8111,0x5728,0x540C,0x4E00,0x20,0x57,0x69,0x2D,0x46,0x69,0xFF0C,0x4E14,0x6CA1,0x6709,0x8BBE,0x5907,0x9694,0x79BB,0x3002)
+                    } else {
+                        $script:TipText.Text = Get-Text @(0x6B63,0x5728,0x7B49,0x624B,0x673A,0x771F,0x6B63,0x6253,0x5230,0x8FD9,0x53F0,0x7535,0x8111,0x3002,0x8BF7,0x626B,0x521A,0x521A,0x5F39,0x51FA,0x7684,0x65B0,0x4E8C,0x7EF4,0x7801,0x3002)
+                    }
+
+                    $script:FooterText.Text = $networkSummary
+                }
+                $networkHintSignature = "{0} || {1}" -f $script:TipText.Text, $script:FooterText.Text
+                if ($networkHintSignature -ne $script:LastNetworkHint) {
+                    $script:LastNetworkHint = $networkHintSignature
+                    Write-UiLog ("Network hint: {0}" -f $networkHintSignature)
                 }
                 return
             }

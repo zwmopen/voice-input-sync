@@ -77,10 +77,10 @@ function Get-ManagedAuxiliaryProcesses {
 function Get-ProcessIdValue {
     param($ProcessObject)
 
-    if ($null -ne $ProcessObject.Id) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["Id"]) {
         return [int]$ProcessObject.Id
     }
-    if ($null -ne $ProcessObject.ProcessId) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["ProcessId"]) {
         return [int]$ProcessObject.ProcessId
     }
 
@@ -90,10 +90,10 @@ function Get-ProcessIdValue {
 function Get-ProcessNameValue {
     param($ProcessObject)
 
-    if ($null -ne $ProcessObject.ProcessName) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["ProcessName"]) {
         return [string]$ProcessObject.ProcessName
     }
-    if ($null -ne $ProcessObject.Name) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["Name"]) {
         return [string]$ProcessObject.Name
     }
 
