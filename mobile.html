@@ -408,8 +408,8 @@
         const clearComputerButton = document.getElementById("clearComputerButton");
 
         const urlParams = new URLSearchParams(window.location.search);
-        const sessionToken = urlParams.get("token") || "";
-        const runtimeConfig = { wsPort: 8765 };
+        let sessionToken = urlParams.get("token") || "";
+        const runtimeConfig = { wsPort: 8765, sessionToken: "" };
 
         let ws = null;
         let desktopReady = false;
@@ -517,6 +517,10 @@
                 if (typeof data.wsPort === "number" && data.wsPort > 0) {
                     runtimeConfig.wsPort = data.wsPort;
                 }
+                if (typeof data.sessionToken === "string" && data.sessionToken.trim()) {
+                    runtimeConfig.sessionToken = data.sessionToken.trim();
+                    sessionToken = runtimeConfig.sessionToken;
+                }
             } catch (error) {
                 console.warn("读取运行配置失败，使用默认端口。", error);
             }
@@ -546,7 +550,7 @@
 
         function sendPayload(type, content, options = {}) {
             if (!sessionToken) {
-                updateConnectionBadge("error");
+                updateConnectionBadge("waiting");
                 showSyncStatus("这个手机地址已经失效，请重新扫码。", "error", 2200);
                 return "";
             }
@@ -616,12 +620,12 @@
             ws.onclose = () => {
                 desktopReady = false;
                 updateDesktopState();
-                updateConnectionBadge(sessionToken ? "waiting" : "error");
+                updateConnectionBadge("waiting");
                 window.setTimeout(connect, 3000);
             };
 
             ws.onerror = () => {
-                updateConnectionBadge(sessionToken ? "waiting" : "error");
+                updateConnectionBadge("waiting");
             };
 
             ws.onmessage = (event) => {
@@ -631,7 +635,8 @@
                         if (data.ok) {
                             updateConnectionBadge("connected");
                         } else {
-                            updateConnectionBadge("error");
+                            updateConnectionBadge("waiting");
+                            loadRuntimeConfig();
                             showSyncStatus("这个手机地址已经失效，请重新扫码。", "error", 2400);
                         }
                         return;
@@ -767,12 +772,16 @@
             updateStats();
             updateDesktopState();
             updateModeUi();
+            updateConnectionBadge("waiting");
+            await loadRuntimeConfig();
+            if (!sessionToken && runtimeConfig.sessionToken) {
+                sessionToken = runtimeConfig.sessionToken;
+            }
             if (!sessionToken) {
                 updateConnectionBadge("error");
                 showSyncStatus("这个手机地址没有会话令牌，请重新扫码。", "error", 2600);
                 return;
             }
-            await loadRuntimeConfig();
             connect();
         });
     </script>

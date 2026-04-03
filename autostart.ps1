@@ -130,13 +130,12 @@ function Start-PythonProcess {
 function Ensure-StartupEntry {
     $startupDir = [Environment]::GetFolderPath("Startup")
     $startupBatPath = Join-Path $startupDir $StartupBatName
-    $startupContent = @"
-@echo off
-chcp 65001 >nul
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "$BaseDir\autostart.ps1" -Silent
-"@
-    Set-Content -Path $startupBatPath -Value $startupContent -Encoding UTF8
-    Write-Log ("Ensured startup entry: {0}" -f $startupBatPath)
+    if (Test-Path $startupBatPath) {
+        Remove-Item -LiteralPath $startupBatPath -Force
+        Write-Log ("Removed legacy startup entry: {0}" -f $startupBatPath)
+    } else {
+        Write-Log "Startup entry already absent."
+    }
 }
 
 function Ensure-FirstRunSetup {

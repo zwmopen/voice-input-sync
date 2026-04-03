@@ -385,6 +385,27 @@ function Ensure-DesktopShortcut {
     return $true
 }
 
+function Remove-LegacyStartupEntries {
+    $startupDir = [Environment]::GetFolderPath("Startup")
+    $legacyTargets = @(
+        (Join-Path $startupDir "voice-input-sync-startup.bat"),
+        (Join-Path $startupDir "voice-input-sync-startup.vbs")
+    )
+
+    foreach ($target in $legacyTargets) {
+        if (-not (Test-Path $target)) {
+            continue
+        }
+
+        try {
+            Remove-Item -LiteralPath $target -Force
+            Write-Log ("Removed legacy startup entry: {0}" -f $target)
+        } catch {
+            Write-Log ("Failed to remove legacy startup entry {0}: {1}" -f $target, $_.Exception.Message)
+        }
+    }
+}
+
 function Start-TrayResident {
     if (-not (Test-Path $TrayScript)) {
         Write-Log "Tray resident skipped: script missing."
@@ -431,7 +452,8 @@ function Read-BuildInfo {
 function Write-RuntimeConfig {
     param(
         [int]$HttpPort,
-        [int]$WsPort
+        [int]$WsPort,
+        [string]$SessionToken = ""
     )
 
     $buildInfo = Read-BuildInfo
@@ -443,6 +465,7 @@ function Write-RuntimeConfig {
     $config = [ordered]@{
         httpPort = $HttpPort
         wsPort = $WsPort
+        sessionToken = $SessionToken
         buildId = $buildId
         updatedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
@@ -569,18 +592,18 @@ function Get-ExistingRunningSession {
         $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
     }
 
-    if ($url -notmatch "token=") {
-        Write-Log "Existing session ignored because URL has no session token."
-        return $null
-    }
-
     $pageTarget = if (Test-Path $QrHtmlFile) { $QrHtmlFile } else { $url }
+    $sessionToken = ""
+    if ($null -ne $config.PSObject.Properties["sessionToken"] -and $config.sessionToken) {
+        $sessionToken = [string]$config.sessionToken
+    }
 
     return [pscustomobject]@{
         HttpPort = $httpPort
         WsPort = $wsPort
         Url = $url
         PageTarget = $pageTarget
+        SessionToken = $sessionToken
     }
 }
 
@@ -679,7 +702,8 @@ function Try-OpenPageWithCooldown {
 function Update-ShareArtifacts {
     param(
         [string]$Url,
-        [int]$WsPort
+        [int]$WsPort,
+        [string]$SessionToken = ""
     )
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
@@ -688,19 +712,10 @@ function Update-ShareArtifacts {
 
     Set-Content -Path $LatestUrlFile -Value $Url -Encoding UTF8
 
-    $token = ""
-    try {
-        $uri = [Uri]$Url
-        $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-        $token = [string]$query.Get("token")
-    } catch {
-        $token = ""
-    }
-
     $qrOk = $false
     if (Test-Path $QrExe) {
         try {
-            & $QrExe --url $Url --svg $QrSvgFile --html $QrHtmlFile --ws-port $WsPort --session-token $token
+            & $QrExe --url $Url --svg $QrSvgFile --html $QrHtmlFile --ws-port $WsPort --session-token $SessionToken
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true
             }
@@ -742,7 +757,7 @@ try {
 
         $existingSession = Get-ExistingRunningSession
         if ($existingSession) {
-            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort)
+            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken)
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
@@ -771,6 +786,8 @@ try {
     Write-Log "Startup mutex acquired."
 
     try {
+        Remove-LegacyStartupEntries
+
         Show-Stage -Title "正在检查桌面快捷方式" -Detail "只在需要时才会更新桌面入口。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
         $shortcutOk = Ensure-DesktopShortcut
         Write-Log ("Desktop shortcut status: {0}" -f $shortcutOk)
@@ -781,7 +798,7 @@ try {
     $existingSession = Get-ExistingRunningSession
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
-        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort)
+        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken)
         $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
         $pageOpened = $false
         if ($shouldOpenPage) {
@@ -802,7 +819,7 @@ try {
     $httpPort = Get-AvailablePort -PreferredPort 8000
     $wsPort = Get-AvailablePort -PreferredPort 8765
     $sessionToken = New-SessionToken
-    Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort
+    Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
 
     Show-Stage -Title "正在启动同步服务" -Detail ("网页端口 {0}，同步端口 {1}" -f $httpPort, $wsPort) -Emoji "⚙️" -Color "DarkCyan" -Percent 58
     Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments @("--port", $httpPort) | Out-Null
@@ -828,10 +845,10 @@ try {
     }
 
     $lanIp = Get-LanIp
-    $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html?token=$sessionToken" } else { "http://127.0.0.1:$httpPort/mobile.html?token=$sessionToken" }
+    $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
-    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort
+    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken
     Write-Log "QR ready: $qrOk"
 
     Start-TrayResident | Out-Null
