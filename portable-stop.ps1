@@ -11,6 +11,22 @@ $LogsDir = Join-Path $PackageDir "logs"
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 
+function Resolve-ManagedExecutablePath {
+    param([string]$BaseName)
+
+    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
+    if (Test-Path $flatPath) {
+        return $flatPath
+    }
+
+    $folderPath = Join-Path (Join-Path $BaseDir $BaseName) ($BaseName + ".exe")
+    if (Test-Path $folderPath) {
+        return $folderPath
+    }
+
+    return $flatPath
+}
+
 function Write-Log {
     param([string]$Message)
     $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -19,19 +35,35 @@ function Write-Log {
 
 function Get-ManagedProcesses {
     $targets = @(
-        (Join-Path $BaseDir "VoiceInputSyncHttp.exe"),
-        (Join-Path $BaseDir "VoiceInputSyncWs.exe"),
-        (Join-Path $BaseDir "VoiceInputSyncClient.exe")
+        (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"),
+        (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"),
+        (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient")
     )
 
-    $targetSet = @{}
+    $processes = @()
     foreach ($target in $targets) {
-        $targetSet[$target.ToLowerInvariant()] = $true
+        if (-not (Test-Path $target)) {
+            continue
+        }
+
+        $processName = [System.IO.Path]::GetFileNameWithoutExtension($target)
+        $normalizedPath = [System.IO.Path]::GetFullPath($target).ToLowerInvariant()
+
+        foreach ($proc in @(Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
+            $procPath = $null
+            try {
+                $procPath = $proc.Path
+            } catch {
+                $procPath = $null
+            }
+
+            if ($procPath -and $procPath.ToLowerInvariant() -eq $normalizedPath) {
+                $processes += $proc
+            }
+        }
     }
 
-    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.ExecutablePath -and $targetSet.ContainsKey($_.ExecutablePath.ToLowerInvariant())
-    })
+    return $processes
 }
 
 function Get-ManagedAuxiliaryProcesses {
@@ -42,6 +74,32 @@ function Get-ManagedAuxiliaryProcesses {
     })
 }
 
+function Get-ProcessIdValue {
+    param($ProcessObject)
+
+    if ($null -ne $ProcessObject.Id) {
+        return [int]$ProcessObject.Id
+    }
+    if ($null -ne $ProcessObject.ProcessId) {
+        return [int]$ProcessObject.ProcessId
+    }
+
+    return 0
+}
+
+function Get-ProcessNameValue {
+    param($ProcessObject)
+
+    if ($null -ne $ProcessObject.ProcessName) {
+        return [string]$ProcessObject.ProcessName
+    }
+    if ($null -ne $ProcessObject.Name) {
+        return [string]$ProcessObject.Name
+    }
+
+    return "unknown"
+}
+
 try {
     Write-Log "=== portable-stop.ps1 started ==="
 
@@ -50,11 +108,12 @@ try {
 
     foreach ($proc in $processes) {
         try {
-            Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+            $procId = Get-ProcessIdValue -ProcessObject $proc
+            Stop-Process -Id $procId -Force -ErrorAction Stop
             $stopped++
-            Write-Log ("Stopped PID={0} Name={1}" -f $proc.ProcessId, $proc.Name)
+            Write-Log ("Stopped PID={0} Name={1}" -f $procId, (Get-ProcessNameValue -ProcessObject $proc))
         } catch {
-            Write-Log ("Stop failed PID={0}: {1}" -f $proc.ProcessId, $_.Exception.Message)
+            Write-Log ("Stop failed PID={0}: {1}" -f (Get-ProcessIdValue -ProcessObject $proc), $_.Exception.Message)
         }
     }
 

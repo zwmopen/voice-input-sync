@@ -43,6 +43,15 @@ $iconPath = Join-Path $projectRoot "assets\voice-sync-icon.ico"
 $versionInfoPath = Join-Path $projectRoot "pyinstaller-version.txt"
 $utf8Bom = [System.Text.UTF8Encoding]::new($true)
 $asciiEncoding = [System.Text.Encoding]::ASCII
+$pyInstallerMode = "--onedir"
+$existingRuntimeStop = Join-Path $runtimeRoot "portable-stop.ps1"
+
+if (Test-Path $existingRuntimeStop) {
+    try {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $existingRuntimeStop -Silent
+    } catch {
+    }
+}
 
 if (-not (Test-Path $venvPython)) {
     Invoke-Step -FilePath "python" -Arguments @("-m", "venv", $venvDir)
@@ -69,7 +78,7 @@ foreach ($target in $buildTargets) {
         "-m", "PyInstaller",
         "--noconfirm",
         "--clean",
-        "--onefile",
+        $pyInstallerMode,
         "--console",
         "--name", $target.Name,
         "--icon", $iconPath,
@@ -86,7 +95,14 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $packageRoot "logs") -Force | Out-Null
 
-Copy-Item (Join-Path $distRoot "*.exe") $runtimeRoot -Force
+foreach ($target in $buildTargets) {
+    $targetDir = Join-Path $distRoot $target.Name
+    if (-not (Test-Path $targetDir)) {
+        throw "Missing build output: $targetDir"
+    }
+    Copy-Item $targetDir $runtimeRoot -Recurse -Force
+}
+
 Copy-Item (Join-Path $projectRoot "mobile.html") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "favicon.svg") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "site.webmanifest") $runtimeRoot -Force
@@ -361,6 +377,7 @@ exit /b %ERRORLEVEL%
 "@
 Write-TextFile -Path (Join-Path $packageRoot "关闭语音输入同步.bat") -Content $stopBat -Encoding $asciiEncoding
 
+Get-ChildItem (Join-Path $packageRoot "logs") -File -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $packageRoot "*") -DestinationPath $zipPath -Force
 
 Write-Host "Build complete:"

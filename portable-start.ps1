@@ -16,10 +16,6 @@ $ShareUrlFile = Join-Path $PackageDir "手机打开这个地址.txt"
 $QrHtmlFile = Join-Path $PackageDir "手机扫码打开.html"
 $QrSvgFile = Join-Path $PackageDir "手机扫码连接.svg"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
-$HttpExe = Join-Path $BaseDir "VoiceInputSyncHttp.exe"
-$WsExe = Join-Path $BaseDir "VoiceInputSyncWs.exe"
-$ClientExe = Join-Path $BaseDir "VoiceInputSyncClient.exe"
-$QrExe = Join-Path $BaseDir "VoiceInputSyncQr.exe"
 $TrayScript = Join-Path $BaseDir "portable-tray.ps1"
 $StartBat = Join-Path $PackageDir "双击启动语音输入同步.bat"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
@@ -32,6 +28,27 @@ $StartupMutex = $null
 $OwnsStartupMutex = $false
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+
+function Resolve-ManagedExecutablePath {
+    param([string]$BaseName)
+
+    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
+    if (Test-Path $flatPath) {
+        return $flatPath
+    }
+
+    $folderPath = Join-Path (Join-Path $BaseDir $BaseName) ($BaseName + ".exe")
+    if (Test-Path $folderPath) {
+        return $folderPath
+    }
+
+    return $flatPath
+}
+
+$HttpExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"
+$WsExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"
+$ClientExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient"
+$QrExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncQr"
 
 function Write-Log {
     param([string]$Message)
@@ -87,9 +104,41 @@ function Read-Status {
 function Get-ExecutableProcess {
     param([string]$ExecutablePath)
 
-    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath -eq $ExecutablePath
-    })
+    if (-not (Test-Path $ExecutablePath)) {
+        return @()
+    }
+
+    $processName = [System.IO.Path]::GetFileNameWithoutExtension($ExecutablePath)
+    $normalizedPath = [System.IO.Path]::GetFullPath($ExecutablePath).ToLowerInvariant()
+    $matches = @()
+
+    foreach ($proc in @(Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
+        $procPath = $null
+        try {
+            $procPath = $proc.Path
+        } catch {
+            $procPath = $null
+        }
+
+        if ($procPath -and $procPath.ToLowerInvariant() -eq $normalizedPath) {
+            $matches += $proc
+        }
+    }
+
+    return $matches
+}
+
+function Get-ProcessIdValue {
+    param($ProcessObject)
+
+    if ($null -ne $ProcessObject.Id) {
+        return [int]$ProcessObject.Id
+    }
+    if ($null -ne $ProcessObject.ProcessId) {
+        return [int]$ProcessObject.ProcessId
+    }
+
+    return 0
 }
 
 function Enter-StartupMutex {
@@ -114,11 +163,53 @@ function Exit-StartupMutex {
     }
 }
 
-function Test-TcpPortListening {
+function Test-TcpPortAvailable {
     param([int]$Port)
 
-    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
-    return ($listeners.Length -gt 0)
+    $socket = $null
+    try {
+        $socket = New-Object System.Net.Sockets.Socket([System.Net.Sockets.AddressFamily]::InterNetwork, [System.Net.Sockets.SocketType]::Stream, [System.Net.Sockets.ProtocolType]::Tcp)
+        $socket.ExclusiveAddressUse = $true
+        $socket.Bind([System.Net.IPEndPoint]::new([System.Net.IPAddress]::Any, $Port))
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($socket) {
+            $socket.Dispose()
+        }
+    }
+}
+
+function Test-TcpPortListening {
+    param(
+        [int]$Port,
+        [string]$Address = "127.0.0.1",
+        [int]$TimeoutMilliseconds = 400
+    )
+
+    $client = $null
+    $asyncResult = $null
+
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient
+        $asyncResult = $client.BeginConnect($Address, $Port, $null, $null)
+        if (-not $asyncResult.AsyncWaitHandle.WaitOne($TimeoutMilliseconds, $false)) {
+            return $false
+        }
+
+        $client.EndConnect($asyncResult)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($asyncResult) {
+            $asyncResult.AsyncWaitHandle.Close()
+        }
+        if ($client) {
+            $client.Close()
+        }
+    }
 }
 
 function Wait-PortReady {
@@ -149,7 +240,7 @@ function Get-AvailablePort {
     )
 
     for ($port = $PreferredPort; $port -lt ($PreferredPort + $SearchSpan); $port++) {
-        if (-not (Test-TcpPortListening -Port $port)) {
+        if (Test-TcpPortAvailable -Port $port) {
             if ($port -ne $PreferredPort) {
                 Write-Log ("端口 {0} 已占用，自动改用 {1}" -f $PreferredPort, $port)
             }
@@ -171,15 +262,10 @@ function Launch-PortableProcess {
         throw "Missing executable: $ExePath"
     }
 
-    $stdout = Join-Path $LogsDir "$Name.out.log"
-    $stderr = Join-Path $LogsDir "$Name.err.log"
-
     Start-Process -FilePath $ExePath `
         -ArgumentList $Arguments `
         -WorkingDirectory $BaseDir `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr | Out-Null
+        -WindowStyle Hidden | Out-Null
 
     Write-Log ("{0} launch requested: {1}" -f $Name, ($Arguments -join " "))
     return $true
@@ -210,16 +296,17 @@ function Stop-ManagedProcesses {
         $processes = @(Get-ExecutableProcess -ExecutablePath $target)
         foreach ($proc in $processes) {
             try {
-                Stop-Process -Id $proc.ProcessId -Force -ErrorAction Stop
+                $procId = Get-ProcessIdValue -ProcessObject $proc
+                Stop-Process -Id $procId -Force -ErrorAction Stop
                 $stopped++
-                Write-Log ("Self-check stopped PID={0} Path={1}" -f $proc.ProcessId, $target)
+                Write-Log ("Self-check stopped PID={0} Path={1}" -f $procId, $target)
             } catch {
-                Write-Log ("Self-check failed to stop PID={0}: {1}" -f $proc.ProcessId, $_.Exception.Message)
+                Write-Log ("Self-check failed to stop PID={0}: {1}" -f (Get-ProcessIdValue -ProcessObject $proc), $_.Exception.Message)
             }
         }
     }
 
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 150
     return $stopped
 }
 
