@@ -16,6 +16,7 @@ $ShareUrlFile = Join-Path $PackageDir "手机打开这个地址.txt"
 $QrHtmlFile = Join-Path $PackageDir "手机扫码打开.html"
 $QrSvgFile = Join-Path $PackageDir "手机扫码连接.svg"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
+$BuildInfoFile = Join-Path $BaseDir "build-info.json"
 $TrayScript = Join-Path $BaseDir "portable-tray.ps1"
 $StartBat = Join-Path $PackageDir "双击启动语音输入同步.bat"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
@@ -413,20 +414,64 @@ function Read-RuntimeConfig {
     }
 }
 
+function Read-BuildInfo {
+    if (-not (Test-Path $BuildInfoFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $BuildInfoFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
 function Write-RuntimeConfig {
     param(
         [int]$HttpPort,
         [int]$WsPort
     )
 
+    $buildInfo = Read-BuildInfo
+    $buildId = ""
+    if ($buildInfo -and $buildInfo.buildId) {
+        $buildId = [string]$buildInfo.buildId
+    }
+
     $config = [ordered]@{
         httpPort = $HttpPort
         wsPort = $WsPort
+        buildId = $buildId
         updatedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
     $config | ConvertTo-Json -Compress | Set-Content -Path $RuntimeConfigFile -Encoding UTF8
-    Write-Log ("Runtime config written: HTTP={0} WS={1}" -f $HttpPort, $WsPort)
+    Write-Log ("Runtime config written: HTTP={0} WS={1} BUILD={2}" -f $HttpPort, $WsPort, $buildId)
+}
+
+function Test-HttpAssetHealthy {
+    param(
+        [int]$Port,
+        [string]$RelativePath
+    )
+
+    $uri = "http://127.0.0.1:{0}/{1}?ts={2}" -f $Port, $RelativePath.TrimStart('/'), ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+    try {
+        $request = [System.Net.HttpWebRequest]::Create($uri)
+        $request.Method = "GET"
+        $request.Timeout = 2500
+        $request.ReadWriteTimeout = 2500
+        $request.AllowAutoRedirect = $false
+        $response = [System.Net.HttpWebResponse]$request.GetResponse()
+        try {
+            return ($response.StatusCode -eq [System.Net.HttpStatusCode]::OK)
+        } finally {
+            $response.Close()
+        }
+    } catch {
+        Write-Log ("HTTP asset health check failed: {0}" -f $uri)
+        return $false
+    }
 }
 
 function Show-Stage {
@@ -452,6 +497,7 @@ function Show-Stage {
 }
 
 function Get-ExistingRunningSession {
+    $buildInfo = Read-BuildInfo
     $config = Read-RuntimeConfig
     if (-not $config) {
         return $null
@@ -468,6 +514,21 @@ function Get-ExistingRunningSession {
         return $null
     }
 
+    $currentBuildId = ""
+    if ($buildInfo -and $null -ne $buildInfo.PSObject.Properties["buildId"] -and $buildInfo.buildId) {
+        $currentBuildId = [string]$buildInfo.buildId
+    }
+
+    $sessionBuildId = ""
+    if ($null -ne $config.PSObject.Properties["buildId"] -and $config.buildId) {
+        $sessionBuildId = [string]$config.buildId
+    }
+
+    if ($currentBuildId -and $sessionBuildId -and $currentBuildId -ne $sessionBuildId) {
+        Write-Log ("Existing session ignored because build changed: current={0} session={1}" -f $currentBuildId, $sessionBuildId)
+        return $null
+    }
+
     if ((@(Get-ExecutableProcess -ExecutablePath $HttpExe)).Length -eq 0) {
         return $null
     }
@@ -481,6 +542,14 @@ function Get-ExistingRunningSession {
         return $null
     }
     if (-not (Test-TcpPortListening -Port $wsPort)) {
+        return $null
+    }
+    if (-not (Test-HttpAssetHealthy -Port $httpPort -RelativePath "mobile.html")) {
+        Write-Log ("Existing session ignored because mobile.html is not healthy on port {0}" -f $httpPort)
+        return $null
+    }
+    if (-not (Test-HttpAssetHealthy -Port $httpPort -RelativePath "runtime-config.json")) {
+        Write-Log ("Existing session ignored because runtime-config.json is not healthy on port {0}" -f $httpPort)
         return $null
     }
 

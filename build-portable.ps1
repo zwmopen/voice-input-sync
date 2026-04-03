@@ -53,6 +53,20 @@ if (Test-Path $existingRuntimeStop) {
     }
 }
 
+$gitCommit = ""
+try {
+    $gitCommit = (git -C $projectRoot rev-parse --short HEAD 2>$null).Trim()
+} catch {
+    $gitCommit = ""
+}
+
+$buildInfo = [ordered]@{
+    buildId = [guid]::NewGuid().ToString("N")
+    builtAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    gitCommit = $gitCommit
+}
+$buildInfoJson = $buildInfo | ConvertTo-Json -Compress
+
 if (-not (Test-Path $venvPython)) {
     Invoke-Step -FilePath "python" -Arguments @("-m", "venv", $venvDir)
 }
@@ -112,6 +126,7 @@ Copy-Item (Join-Path $projectRoot "portable-tray.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-stop.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "使用手册.md") $runtimeRoot -Force -ErrorAction SilentlyContinue
+Set-Content -Path (Join-Path $runtimeRoot "build-info.json") -Value $buildInfoJson -Encoding UTF8
 Copy-Item (Join-Path $projectRoot "assets") $runtimeRoot -Recurse -Force
 
 Copy-Item (Join-Path $projectRoot "share-quick-start.txt") (Join-Path $packageRoot "先看这里.txt") -Force
