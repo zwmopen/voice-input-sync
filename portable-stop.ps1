@@ -34,10 +34,18 @@ function Get-ManagedProcesses {
     })
 }
 
+function Get-ManagedAuxiliaryProcesses {
+    $trayPattern = [regex]::Escape((Join-Path $BaseDir "portable-tray.ps1"))
+
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and $_.CommandLine -match $trayPattern
+    })
+}
+
 try {
     Write-Log "=== portable-stop.ps1 started ==="
 
-    $processes = Get-ManagedProcesses
+    $processes = @(Get-ManagedProcesses) + @(Get-ManagedAuxiliaryProcesses)
     $stopped = 0
 
     foreach ($proc in $processes) {

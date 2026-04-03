@@ -17,6 +17,8 @@ function Write-TextFile {
 $projectRoot = Split-Path -Parent $PSCommandPath
 $releaseRoot = Join-Path $projectRoot "release"
 $packageRoot = Join-Path $releaseRoot "语音输入同步-绿色版"
+$portableZipPath = Join-Path $releaseRoot "语音输入同步-绿色版.zip"
+$portableZipAliasPath = Join-Path $releaseRoot "VoiceInputSync-Portable.zip"
 $asciiSetupPath = Join-Path $releaseRoot "VoiceInputSync-Setup.exe"
 $finalSetupPath = Join-Path $releaseRoot "语音输入同步-安装版.exe"
 $buildRoot = Join-Path $projectRoot ".sfx-build"
@@ -41,6 +43,7 @@ if ($LASTEXITCODE -ne 0) {
 Remove-Item $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $asciiSetupPath -Force -ErrorAction SilentlyContinue
 Remove-Item $finalSetupPath -Force -ErrorAction SilentlyContinue
+Remove-Item $portableZipAliasPath -Force -ErrorAction SilentlyContinue
 
 New-Item -ItemType Directory -Path $payloadDir -Force | Out-Null
 Copy-Item (Join-Path $packageRoot "*") $payloadDir -Recurse -Force
@@ -86,6 +89,7 @@ if (-not (Test-Path $asciiSetupPath)) {
 }
 
 Copy-Item $asciiSetupPath $finalSetupPath -Force
+Copy-Item $portableZipPath $portableZipAliasPath -Force
 Remove-Item $buildRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "Installer build complete:"

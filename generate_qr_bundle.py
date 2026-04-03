@@ -27,12 +27,9 @@ def build_svg(url: str, output_path: Path) -> None:
     output_path.write_text(buffer.getvalue().decode("utf-8"), encoding="utf-8")
 
 
-def build_html(url: str, svg_filename: str, ws_port: int) -> str:
-    safe_url = html.escape(url)
-    safe_url_js = json.dumps(url, ensure_ascii=False)
-    safe_svg = html.escape(svg_filename)
+def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) -> str:
     host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-    safe_ws_url_js = json.dumps(f"ws://{host}:{ws_port}", ensure_ascii=False)
+    ws_url = f"ws://{host}:{ws_port}"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return f"""<!DOCTYPE html>
@@ -43,17 +40,18 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
     <title>语音输入同步 - 手机扫码连接</title>
     <style>
         :root {{
-            --bg: #e0e5ec;
-            --panel: #e0e5ec;
-            --text: #324256;
-            --muted: #6f7b8d;
-            --brand: #d97706;
-            --brand-strong: #b25e00;
-            --blue: #2457a6;
-            --green: #1f8a5b;
-            --shadow-raise: 16px 16px 34px #b8bec7, -16px -16px 34px #ffffff;
-            --shadow-soft: 10px 10px 20px #bcc2cb, -10px -10px 20px #ffffff;
-            --shadow-inset: inset 6px 6px 12px #bcc2cb, inset -6px -6px 12px #ffffff;
+            --paper: #e7ecf2;
+            --card: rgba(237, 242, 247, 0.96);
+            --text: #28384b;
+            --muted: #66758a;
+            --accent: #cf7e29;
+            --accent-soft: rgba(207, 126, 41, 0.12);
+            --green: #258657;
+            --green-soft: rgba(37, 134, 87, 0.12);
+            --red: #c44a45;
+            --red-soft: rgba(196, 74, 69, 0.1);
+            --shadow-up: 18px 18px 34px rgba(173, 183, 196, 0.8), -18px -18px 34px rgba(255, 255, 255, 0.96);
+            --shadow-inset: inset 8px 8px 14px rgba(176, 185, 197, 0.72), inset -8px -8px 14px rgba(255, 255, 255, 0.9);
         }}
 
         * {{
@@ -62,30 +60,28 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
 
         body {{
             margin: 0;
+            min-height: 100vh;
             font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
             color: var(--text);
             background:
-                radial-gradient(circle at top left, rgba(217, 119, 6, 0.14), transparent 24%),
-                radial-gradient(circle at top right, rgba(36, 87, 166, 0.10), transparent 18%),
-                linear-gradient(180deg, #edf1f6 0%, #dde3ea 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+                radial-gradient(circle at top left, rgba(207, 126, 41, 0.12), transparent 24%),
+                radial-gradient(circle at top right, rgba(37, 134, 87, 0.10), transparent 20%),
+                linear-gradient(180deg, #edf2f7 0%, #dde4eb 100%);
             padding: 24px;
         }}
 
         .shell {{
-            width: min(1180px, 100%);
+            width: min(1160px, 100%);
+            margin: 0 auto;
             display: grid;
-            grid-template-columns: minmax(340px, 440px) minmax(340px, 1fr);
+            grid-template-columns: minmax(340px, 420px) minmax(360px, 1fr);
             gap: 24px;
         }}
 
         .card {{
-            background: var(--panel);
+            background: var(--card);
             border-radius: 30px;
-            box-shadow: var(--shadow-raise);
+            box-shadow: var(--shadow-up);
             padding: 28px;
         }}
 
@@ -95,99 +91,101 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             gap: 8px;
             padding: 8px 14px;
             border-radius: 999px;
-            background: var(--panel);
-            box-shadow: var(--shadow-soft);
-            color: var(--brand);
+            background: var(--accent-soft);
+            color: var(--accent);
             font-size: 13px;
             font-weight: 700;
         }}
 
         h1 {{
             margin: 18px 0 10px;
-            font-size: clamp(34px, 5vw, 54px);
+            font-size: clamp(34px, 5vw, 52px);
             line-height: 1.05;
         }}
 
         p {{
             margin: 0;
-            line-height: 1.8;
             color: var(--muted);
+            line-height: 1.8;
             font-size: 16px;
         }}
 
         .qr-wrap {{
+            margin-top: 20px;
+            border-radius: 26px;
+            padding: 22px;
+            background: var(--paper);
+            box-shadow: var(--shadow-inset);
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 22px;
-            border-radius: 26px;
-            background: var(--panel);
-            box-shadow: var(--shadow-inset);
-            margin-bottom: 18px;
         }}
 
         .qr-wrap img {{
-            width: min(100%, 360px);
+            width: min(100%, 340px);
             height: auto;
             display: block;
-            border-radius: 18px;
-            background: #fff;
             padding: 14px;
-            box-shadow: 8px 8px 16px rgba(184, 190, 199, 0.9), -8px -8px 16px rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            background: #fff;
+            box-shadow: 10px 10px 22px rgba(170, 179, 190, 0.72), -10px -10px 22px rgba(255, 255, 255, 0.92);
         }}
 
-        .list {{
-            display: grid;
-            gap: 12px;
+        .status-panel {{
             margin-top: 18px;
+            padding: 18px;
+            border-radius: 22px;
+            background: var(--paper);
+            box-shadow: var(--shadow-inset);
         }}
 
-        .item {{
-            display: flex;
-            gap: 12px;
-            align-items: flex-start;
-            padding: 14px 16px;
-            border-radius: 18px;
-            background: var(--panel);
-            box-shadow: var(--shadow-soft);
-        }}
-
-        .badge {{
-            width: 28px;
-            height: 28px;
-            flex: 0 0 auto;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            color: #fff;
+        .status-label {{
+            font-size: 13px;
             font-weight: 700;
-            background: linear-gradient(135deg, #d97706, #f4a340);
+            color: var(--muted);
+            margin-bottom: 10px;
         }}
 
-        .item strong {{
-            display: block;
-            margin-bottom: 4px;
-            font-size: 15px;
+        .status-button {{
+            width: 100%;
+            border: none;
+            border-radius: 999px;
+            padding: 16px 18px;
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--accent);
+            background: var(--paper);
+            box-shadow: 8px 8px 16px rgba(176, 185, 197, 0.8), -8px -8px 16px rgba(255, 255, 255, 0.95);
+        }}
+
+        .status-button.connected {{
+            color: #fff;
+            background: linear-gradient(145deg, #6dc99a, #3da86f);
+            box-shadow: 8px 8px 18px rgba(61, 168, 111, 0.35), -8px -8px 16px rgba(255, 255, 255, 0.9);
+        }}
+
+        .status-note {{
+            margin-top: 12px;
+            color: var(--muted);
+            line-height: 1.75;
+            font-size: 14px;
+        }}
+
+        .status-note.success {{
+            color: var(--green);
+        }}
+
+        .status-note.error {{
+            color: var(--red);
         }}
 
         .url-box {{
             margin-top: 18px;
             padding: 18px;
             border-radius: 22px;
-            background: var(--panel);
+            background: var(--paper);
             box-shadow: var(--shadow-inset);
             cursor: pointer;
-            transition: transform 0.18s ease, box-shadow 0.18s ease;
-        }}
-
-        .url-box:hover {{
-            transform: translateY(-1px);
-        }}
-
-        .url-box:focus-visible {{
-            outline: 3px solid rgba(36, 87, 166, 0.18);
-            outline-offset: 4px;
         }}
 
         .url-head {{
@@ -200,27 +198,20 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
 
         .url-label {{
             font-size: 13px;
-            color: var(--blue);
             font-weight: 700;
+            color: #35567f;
         }}
 
         .copy-pill {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 8px 14px;
             border: none;
             border-radius: 999px;
-            background: var(--panel);
-            color: var(--brand-strong);
+            padding: 8px 14px;
+            background: var(--paper);
+            color: var(--accent);
             font-size: 13px;
             font-weight: 700;
             cursor: pointer;
-            box-shadow: 6px 6px 12px #b8bec7, -6px -6px 12px #ffffff;
-        }}
-
-        .copy-pill:active {{
-            box-shadow: inset 4px 4px 8px #bcc2cb, inset -4px -4px 8px #ffffff;
+            box-shadow: 6px 6px 12px rgba(176, 185, 197, 0.8), -6px -6px 12px rgba(255, 255, 255, 0.95);
         }}
 
         .url-value {{
@@ -231,79 +222,19 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             font-weight: 700;
         }}
 
-        .url-help {{
-            margin-top: 10px;
-            font-size: 13px;
-            color: var(--muted);
-        }}
-
-        .url-tip {{
-            margin-top: 12px;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 14px;
-            border-radius: 14px;
-            background: rgba(36, 87, 166, 0.08);
-            color: var(--blue);
-            font-size: 13px;
-            font-weight: 600;
-        }}
-
-        .status-panel {{
-            margin-top: 18px;
-            padding: 18px;
-            border-radius: 22px;
-            background: var(--panel);
-            box-shadow: var(--shadow-inset);
-        }}
-
-        .status-label {{
-            font-size: 13px;
-            color: var(--muted);
-            margin-bottom: 10px;
-            font-weight: 700;
-        }}
-
-        .status-button {{
-            width: 100%;
-            border: none;
-            border-radius: 999px;
-            padding: 16px 18px;
-            background: var(--panel);
-            color: var(--brand-strong);
-            font-size: 18px;
-            font-weight: 800;
-            box-shadow: 8px 8px 16px #b8bec7, -8px -8px 16px #ffffff;
-        }}
-
-        .status-button.connected {{
-            color: #ffffff;
-            background: linear-gradient(145deg, #7fd1a8, #49b27c);
-            box-shadow: 8px 8px 18px rgba(73, 178, 124, 0.35), -8px -8px 16px rgba(255, 255, 255, 0.92);
-        }}
-
-        .status-note {{
-            margin-top: 12px;
-            font-size: 14px;
-            line-height: 1.8;
-            color: var(--muted);
-        }}
-
-        .tips {{
+        .list {{
             display: grid;
             gap: 12px;
-            margin-top: 20px;
         }}
 
-        .tip {{
+        .item {{
             padding: 16px 18px;
             border-radius: 18px;
-            background: var(--panel);
-            box-shadow: var(--shadow-soft);
+            background: var(--paper);
+            box-shadow: 10px 10px 20px rgba(176, 185, 197, 0.7), -10px -10px 20px rgba(255, 255, 255, 0.92);
         }}
 
-        .tip strong {{
+        .item strong {{
             display: block;
             margin-bottom: 6px;
             font-size: 15px;
@@ -312,7 +243,7 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
         .meta {{
             margin-top: 18px;
             font-size: 13px;
-            color: #7d7367;
+            color: #756b60;
         }}
 
         .toast {{
@@ -320,11 +251,11 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             left: 50%;
             bottom: 28px;
             transform: translateX(-50%) translateY(24px);
-            background: var(--panel);
+            background: var(--card);
             color: var(--green);
             padding: 14px 22px;
             border-radius: 999px;
-            box-shadow: var(--shadow-raise);
+            box-shadow: var(--shadow-up);
             font-size: 14px;
             font-weight: 700;
             opacity: 0;
@@ -337,7 +268,7 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             transform: translateX(-50%) translateY(0);
         }}
 
-        @media (max-width: 920px) {{
+        @media (max-width: 940px) {{
             .shell {{
                 grid-template-columns: 1fr;
             }}
@@ -368,71 +299,59 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
     <main class="shell">
         <section class="card">
             <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
-            <h1>扫一扫，直接开始。</h1>
-            <p>手机打开相机或微信扫一扫，扫这个二维码就能直接进入输入页，不用手工发链接，也不用自己拼地址。</p>
+            <h1>扫一扫，马上开始。</h1>
+            <p>手机扫这个二维码就能直接进入输入页。扫完以后，回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。</p>
 
-            <div class="url-box" id="urlBox" role="button" tabindex="0" aria-label="点击复制地址">
-                <div class="url-head">
-                    <div class="url-label">手机打开地址</div>
-                    <button class="copy-pill" type="button" id="copyButton">点击复制地址</button>
-                </div>
-                <div class="url-value" id="manualUrl">{safe_url}</div>
+            <div class="qr-wrap">
+                <img src="{html.escape(svg_filename)}" alt="语音输入同步二维码">
             </div>
 
             <div class="status-panel">
                 <div class="status-label">连接状态</div>
                 <button class="status-button" type="button" id="connectionStatus">等待连接</button>
-                <div class="status-note" id="statusNote">扫码后，回到你真正要输入的窗口，点一下输入框，再开始说话或打字。</div>
-            </div>
-
-            <div class="tips">
-                <div class="tip">
-                    <strong>使用前先做一件事</strong>
-                    <span>先去电脑上把光标点到你要输入的位置，再用手机开始说话或打字。</span>
-                </div>
-                <div class="tip">
-                    <strong>如果手机连上了，但电脑没打字</strong>
-                    <span>回到绿色包根目录，双击“如果输入没反应-请用管理员启动.bat”。</span>
-                </div>
+                <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。输入成功或失败，也会在这里给你反馈。</div>
             </div>
 
             <div class="meta">生成时间：{generated_at}</div>
         </section>
 
         <section class="card">
-            <div class="qr-wrap">
-                <img src="{safe_svg}" alt="语音输入同步二维码">
-            </div>
-
             <div class="list">
                 <div class="item">
-                    <span class="badge">1</span>
-                    <div>
-                        <strong>确保同一个网络</strong>
-                        <span>手机和电脑要在同一个 Wi-Fi 或同一个局域网里。</span>
+                    <strong>手机打开地址</strong>
+                    <div class="url-box" id="urlBox" role="button" tabindex="0" aria-label="点击复制手机地址">
+                        <div class="url-head">
+                            <div class="url-label">手动地址</div>
+                            <button class="copy-pill" type="button" id="copyButton">点击复制地址</button>
+                        </div>
+                        <div class="url-value">{html.escape(url)}</div>
                     </div>
                 </div>
+
                 <div class="item">
-                    <span class="badge">2</span>
-                    <div>
-                        <strong>用手机扫一扫</strong>
-                        <span>优先用相机或微信扫一扫；扫码失败时，再手动打开上方地址。</span>
-                    </div>
+                    <strong>先做这一件事</strong>
+                    <span>在电脑上先把光标点到你真正要输入的位置。这个工具只负责把手机上的输入送过去，不会替你决定要输入到哪个框里。</span>
                 </div>
+
                 <div class="item">
-                    <span class="badge">3</span>
-                    <div>
-                        <strong>进入页面后直接输入</strong>
-                        <span>可以用语音输入法，也可以手动打字，内容会同步到电脑当前光标位置。</span>
-                    </div>
+                    <strong>如果手机连上了但电脑没打字</strong>
+                    <span>回到绿色包根目录，双击“如果输入没反应-请用管理员启动.bat”。新版已经会把失败原因直接回传到这页和手机页。</span>
+                </div>
+
+                <div class="item">
+                    <strong>输入模式说明</strong>
+                    <span>手机页现在有“实时同步”和“整段同步”两种模式。输入法改写频繁时，改用整段同步会更稳。</span>
                 </div>
             </div>
         </section>
     </main>
-    <div class="toast" id="toast">地址已复制，去手机上打开就行。</div>
+
+    <div class="toast" id="toast">地址已复制。</div>
+
     <script>
-        const manualUrl = {safe_url_js};
-        const statusWsUrl = {safe_ws_url_js};
+        const manualUrl = {json.dumps(url, ensure_ascii=False)};
+        const statusWsUrl = {json.dumps(ws_url, ensure_ascii=False)};
+        const sessionToken = {json.dumps(session_token, ensure_ascii=False)};
         const urlBox = document.getElementById("urlBox");
         const copyButton = document.getElementById("copyButton");
         const toast = document.getElementById("toast");
@@ -468,35 +387,68 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             try {{
                 if (navigator.clipboard && window.isSecureContext) {{
                     await navigator.clipboard.writeText(manualUrl);
-                    showToast("地址已复制，去手机浏览器粘贴即可。");
+                    showToast("地址已复制，去手机浏览器打开就行。");
                     return;
                 }}
             }} catch (error) {{
             }}
 
             if (fallbackCopy(manualUrl)) {{
-                showToast("地址已复制，去手机浏览器粘贴即可。");
+                showToast("地址已复制，去手机浏览器打开就行。");
             }} else {{
-                showToast("复制失败，请手动长按或选择地址。");
+                showToast("复制失败，请手动长按地址。");
             }}
+        }}
+
+        function setConnectedState(connected) {{
+            if (connected) {{
+                connectionStatus.textContent = "已连接";
+                connectionStatus.className = "status-button connected";
+                return;
+            }}
+
+            connectionStatus.textContent = "等待连接";
+            connectionStatus.className = "status-button";
+        }}
+
+        function setStatusNote(message, tone = "normal") {{
+            statusNote.textContent = message;
+            statusNote.className = "status-note";
+            if (tone === "success") {{
+                statusNote.classList.add("success");
+            }} else if (tone === "error") {{
+                statusNote.classList.add("error");
+            }}
+        }}
+
+        function handleAck(data) {{
+            if (data.ok) {{
+                setStatusNote("最近一次输入已经同步到电脑。", "success");
+                return;
+            }}
+
+            if (data.reason === "permission_denied") {{
+                setStatusNote("电脑输入权限不足，请回电脑端改用管理员启动。", "error");
+                return;
+            }}
+
+            setStatusNote("电脑输入失败，请回电脑端重试。", "error");
         }}
 
         function updatePresence(connected) {{
             const mobileReady = !!connected.mobile;
             const desktopReady = !!connected.desktop;
 
-            if (mobileReady) {{
-                connectionStatus.textContent = "已连接";
-                connectionStatus.className = "status-button connected";
-                if (desktopReady) {{
-                    statusNote.textContent = "已连接。现在回到你真正要输入的窗口，点一下输入框，再开始说话或打字。";
-                }} else {{
-                    statusNote.textContent = "已连接。如果电脑没有打字，请回绿色包根目录使用“如果输入没反应-请用管理员启动.bat”。";
-                }}
+            setConnectedState(mobileReady);
+            if (!mobileReady) {{
+                setStatusNote("扫码以后，电脑这里会自动显示已连接。", "normal");
+                return;
+            }}
+
+            if (desktopReady) {{
+                setStatusNote("已连接。现在回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。");
             }} else {{
-                connectionStatus.textContent = "等待连接";
-                connectionStatus.className = "status-button";
-                statusNote.textContent = "扫码后，回到你真正要输入的窗口，点一下输入框，再开始说话或打字。";
+                setStatusNote("手机已连接，但电脑输入端还没准备好。请回电脑端检查启动状态。", "error");
             }}
         }}
 
@@ -504,7 +456,7 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
             monitorWs = new WebSocket(statusWsUrl);
 
             monitorWs.onopen = () => {{
-                monitorWs.send(JSON.stringify({{ type: "register", role: "monitor" }}));
+                monitorWs.send(JSON.stringify({{ type: "register", role: "monitor", token: sessionToken }}));
             }};
 
             monitorWs.onmessage = (event) => {{
@@ -512,18 +464,23 @@ def build_html(url: str, svg_filename: str, ws_port: int) -> str:
                     const data = JSON.parse(event.data);
                     if (data.type === "presence") {{
                         updatePresence(data.connected || {{}});
+                    }} else if (data.type === "ack") {{
+                        handleAck(data);
+                    }} else if (data.type === "auth" && data.ok === false) {{
+                        setStatusNote("这次启动会话已经失效，请重新从电脑端打开扫码页。", "error");
                     }}
                 }} catch (error) {{
                 }}
             }};
 
             monitorWs.onclose = () => {{
-                updatePresence({{ mobile: false, desktop: false }});
+                setConnectedState(false);
+                setStatusNote("扫码页与后台连接断开，正在自动重连。", "error");
                 window.setTimeout(connectPresence, 3000);
             }};
 
             monitorWs.onerror = () => {{
-                updatePresence({{ mobile: false, desktop: false }});
+                setStatusNote("扫码页暂时连不上后台，请稍后。", "error");
             }};
         }}
 
@@ -556,6 +513,7 @@ def main() -> int:
     parser.add_argument("--svg", required=True)
     parser.add_argument("--html", required=True)
     parser.add_argument("--ws-port", type=int, default=8765)
+    parser.add_argument("--session-token", default="")
     args = parser.parse_args()
 
     svg_path = Path(args.svg).expanduser().resolve()
@@ -565,7 +523,10 @@ def main() -> int:
     html_path.parent.mkdir(parents=True, exist_ok=True)
 
     build_svg(args.url, svg_path)
-    html_path.write_text(build_html(args.url, svg_path.name, args.ws_port), encoding="utf-8")
+    html_path.write_text(
+        build_html(args.url, svg_path.name, args.ws_port, args.session_token),
+        encoding="utf-8",
+    )
     return 0
 
 

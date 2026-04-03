@@ -1,18 +1,20 @@
-"""
-实时语音输入同步服务
-负责中转手机输入消息，并向手机页、桌面扫码页广播连接状态。
-"""
-
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 import websockets
+from websockets.exceptions import ConnectionClosed
+
+
+VALID_ROLES = {"mobile", "desktop", "monitor"}
+INPUT_MESSAGE_TYPES = {"text", "backspace", "enter", "tab", "space", "clear", "replace_all"}
+SESSION_TOKEN = ""
 
 
 def resolve_log_file() -> Path:
@@ -25,10 +27,16 @@ def resolve_log_file() -> Path:
 
 
 LOG_FILE = resolve_log_file()
-VALID_ROLES = {"mobile", "desktop", "monitor"}
-INPUT_MESSAGE_TYPES = {"text", "backspace", "enter", "tab", "space", "clear"}
+
+
+@dataclass
+class ClientMeta:
+    role: str = "unknown"
+    authenticated: bool = False
+
+
 connected_clients: set[websockets.WebSocketServerProtocol] = set()
-client_roles: dict[websockets.WebSocketServerProtocol, str] = {}
+client_meta: dict[websockets.WebSocketServerProtocol, ClientMeta] = {}
 
 
 def log(message: str) -> None:
@@ -43,8 +51,11 @@ def build_presence_payload() -> str:
     counts = {role: 0 for role in VALID_ROLES}
     counts["unknown"] = 0
 
-    for role in client_roles.values():
-        counts[role if role in counts else "unknown"] += 1
+    for meta in client_meta.values():
+        if meta.authenticated and meta.role in VALID_ROLES:
+            counts[meta.role] += 1
+        else:
+            counts["unknown"] += 1
 
     payload = {
         "type": "presence",
@@ -58,17 +69,21 @@ def build_presence_payload() -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-async def send_to_targets(message: str, targets: list[websockets.WebSocketServerProtocol]) -> None:
+async def send_to_targets(
+    payload: str,
+    targets: list[websockets.WebSocketServerProtocol],
+) -> None:
     stale_clients = []
+
     for client in targets:
         try:
-            await client.send(message)
-        except websockets.exceptions.ConnectionClosed:
+            await client.send(payload)
+        except ConnectionClosed:
             stale_clients.append(client)
 
     for client in stale_clients:
         connected_clients.discard(client)
-        client_roles.pop(client, None)
+        client_meta.pop(client, None)
 
 
 async def broadcast_presence() -> None:
@@ -77,75 +92,186 @@ async def broadcast_presence() -> None:
     await send_to_targets(build_presence_payload(), list(connected_clients))
 
 
-async def relay_input_to_desktops(message: str, sender: websockets.WebSocketServerProtocol) -> None:
-    desktop_clients = [
+async def broadcast_ack(data: dict[str, object]) -> None:
+    payload = json.dumps(data, ensure_ascii=False)
+    targets = [
         client
-        for client in connected_clients
-        if client != sender and client_roles.get(client) == "desktop"
+        for client, meta in client_meta.items()
+        if meta.authenticated and meta.role in {"mobile", "monitor"}
     ]
-    await send_to_targets(message, desktop_clients)
+    if targets:
+        await send_to_targets(payload, targets)
 
 
-async def handler(websocket, path):
+async def relay_input_to_desktops(
+    payload: str,
+    sender: websockets.WebSocketServerProtocol,
+) -> None:
+    targets = [
+        client
+        for client, meta in client_meta.items()
+        if client != sender and meta.authenticated and meta.role == "desktop"
+    ]
+    if targets:
+        await send_to_targets(payload, targets)
+
+
+async def reject_client(
+    websocket: websockets.WebSocketServerProtocol,
+    reason: str,
+    close_code: int,
+) -> None:
+    payload = json.dumps(
+        {"type": "auth", "ok": False, "reason": reason},
+        ensure_ascii=False,
+    )
+    try:
+        await websocket.send(payload)
+    except ConnectionClosed:
+        return
+    await websocket.close(code=close_code, reason=reason)
+
+
+async def handle_register(
+    websocket: websockets.WebSocketServerProtocol,
+    data: dict[str, object],
+) -> bool:
+    token = str(data.get("token", ""))
+    role = str(data.get("role", "unknown"))
+
+    if SESSION_TOKEN and token != SESSION_TOKEN:
+        log(f"register rejected: invalid token from {websocket.remote_address}")
+        await reject_client(websocket, "invalid_token", 4001)
+        return False
+
+    if role not in VALID_ROLES:
+        role = "unknown"
+
+    client_meta[websocket] = ClientMeta(role=role, authenticated=True)
+    await websocket.send(
+        json.dumps(
+            {"type": "auth", "ok": True, "role": role},
+            ensure_ascii=False,
+        )
+    )
+    log(f"register ok: {websocket.remote_address} -> {role}")
+    await broadcast_presence()
+    return True
+
+
+def preview_text(text: str, limit: int = 40) -> str:
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+def log_input(data: dict[str, object]) -> None:
+    msg_type = str(data.get("type", "unknown"))
+    message_id = str(data.get("messageId", ""))
+    content = str(data.get("content", ""))
+
+    if msg_type == "text":
+        log(f"input text {message_id}: {preview_text(content)!r}")
+    elif msg_type == "replace_all":
+        log(f"input replace_all {message_id}: len={len(content)}")
+    elif msg_type == "clear":
+        log(f"input clear {message_id}: len={content}")
+    else:
+        log(f"input {msg_type} {message_id}")
+
+
+async def handle_ack(
+    websocket: websockets.WebSocketServerProtocol,
+    data: dict[str, object],
+) -> None:
+    meta = client_meta.get(websocket, ClientMeta())
+    if not meta.authenticated or meta.role != "desktop":
+        await reject_client(websocket, "desktop_ack_required", 4003)
+        return
+
+    payload = {
+        "type": "ack",
+        "messageId": str(data.get("messageId", "")),
+        "action": str(data.get("action", "")),
+        "ok": bool(data.get("ok", False)),
+        "reason": str(data.get("reason", "")),
+        "detail": str(data.get("detail", "")),
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    await broadcast_ack(payload)
+    log(
+        "ack {0} {1}: ok={2} reason={3}".format(
+            payload["action"],
+            payload["messageId"],
+            payload["ok"],
+            payload["reason"] or "none",
+        )
+    )
+
+
+async def handler(websocket, path) -> None:
+    del path
     connected_clients.add(websocket)
-    client_roles[websocket] = "unknown"
-    client_addr = websocket.remote_address
-    log(f"客户端连接: {client_addr}")
+    client_meta[websocket] = ClientMeta()
+    log(f"client connected: {websocket.remote_address}")
     await broadcast_presence()
 
     try:
-        async for message in websocket:
-            data = json.loads(message)
-            msg_type = data.get("type")
-            content = data.get("content", "")
-
-            if msg_type == "register":
-                role = data.get("role", "unknown")
-                if role not in VALID_ROLES:
-                    role = "unknown"
-                client_roles[websocket] = role
-                log(f"角色注册: {client_addr} -> {role}")
-                await broadcast_presence()
+        async for raw_message in websocket:
+            try:
+                data = json.loads(raw_message)
+            except json.JSONDecodeError:
+                log(f"json decode failed from {websocket.remote_address}")
                 continue
 
-            if msg_type in INPUT_MESSAGE_TYPES:
-                await relay_input_to_desktops(message, websocket)
+            msg_type = str(data.get("type", ""))
+            if msg_type == "register":
+                ok = await handle_register(websocket, data)
+                if not ok:
+                    return
+                continue
 
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            if msg_type == "text":
-                preview = content[:30] + "..." if len(content) > 30 else content
-                log(f"[{timestamp}] 文字: {preview}")
-            elif msg_type == "backspace":
-                log(f"[{timestamp}] 按键: 退格")
-            elif msg_type == "enter":
-                log(f"[{timestamp}] 按键: 回车")
-            elif msg_type == "tab":
-                log(f"[{timestamp}] 按键: Tab")
-            elif msg_type == "space":
-                log(f"[{timestamp}] 按键: 空格")
-            elif msg_type == "clear":
-                log(f"[{timestamp}] 清空: {content} 个字符")
-    except websockets.exceptions.ConnectionClosed:
+            meta = client_meta.get(websocket, ClientMeta())
+            if not meta.authenticated:
+                await reject_client(websocket, "register_required", 4002)
+                return
+
+            if msg_type in INPUT_MESSAGE_TYPES:
+                if meta.role != "mobile":
+                    await reject_client(websocket, "mobile_input_required", 4004)
+                    return
+                await relay_input_to_desktops(raw_message, websocket)
+                log_input(data)
+                continue
+
+            if msg_type == "ack":
+                await handle_ack(websocket, data)
+                continue
+
+            log(f"ignored message from {meta.role}: {msg_type}")
+    except ConnectionClosed:
         pass
     finally:
         connected_clients.discard(websocket)
-        client_roles.pop(websocket, None)
-        log(f"客户端断开: {client_addr}")
+        client_meta.pop(websocket, None)
+        log(f"client disconnected: {websocket.remote_address}")
         await broadcast_presence()
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="VoiceInputSync websocket relay server")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--session-token", default="")
     return parser.parse_args()
 
 
-async def main(port: int):
+async def main(port: int, session_token: str) -> None:
+    global SESSION_TOKEN
+    SESSION_TOKEN = session_token.strip()
+
     log("=" * 60)
-    log("语音输入同步服务端")
-    log(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    log(f"服务地址: ws://0.0.0.0:{port}")
-    log("等待连接...")
+    log("VoiceInputSync relay server ready")
+    log(f"started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log(f"listening on: ws://0.0.0.0:{port}")
+    log(f"session token required: {bool(SESSION_TOKEN)}")
 
     async with websockets.serve(handler, "0.0.0.0", port):
         await asyncio.Future()
@@ -153,4 +279,4 @@ async def main(port: int):
 
 if __name__ == "__main__":
     args = parse_args()
-    asyncio.run(main(args.port))
+    asyncio.run(main(args.port, args.session_token))

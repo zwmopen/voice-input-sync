@@ -1,25 +1,20 @@
-"""
-电脑端客户端
-接收手机端文字并模拟键盘输入到当前窗口，同时把运行日志写入文件。
-"""
-
 from __future__ import annotations
 
 import argparse
 import asyncio
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import keyboard
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 
-os.environ["PYTHONIOENCODING"] = "utf-8"
 SERVER_URL = "ws://localhost:8765"
 DELETE_SPEED = 0.01
+FALLBACK_DELETE_LIMIT = 64
 
 
 def resolve_log_file() -> Path:
@@ -37,6 +32,7 @@ LOG_FILE = resolve_log_file()
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="VoiceInputSync desktop typing client")
     parser.add_argument("--ws-url", default=SERVER_URL)
+    parser.add_argument("--session-token", default="")
     return parser.parse_args()
 
 
@@ -48,112 +44,179 @@ def log(message: str) -> None:
         handle.write(line + "\n")
 
 
-async def register_desktop(websocket) -> None:
-    await websocket.send(json.dumps({"type": "register", "role": "desktop"}, ensure_ascii=False))
-    log("已向服务端注册桌面输入客户端。")
+def classify_error(error: Exception) -> tuple[str, str]:
+    message = str(error).strip() or error.__class__.__name__
+    lower_message = message.lower()
+
+    if "access is denied" in lower_message or "denied" in lower_message:
+        return ("permission_denied", "电脑输入权限不足，请回到电脑端改用管理员启动。")
+
+    return ("input_failed", "电脑输入端执行失败，请回到电脑端重试。")
 
 
-async def type_text(text: str) -> bool:
+async def send_ack(
+    websocket,
+    message_id: str,
+    action: str,
+    ok: bool,
+    reason: str,
+    detail: str,
+) -> None:
+    payload = {
+        "type": "ack",
+        "messageId": message_id,
+        "action": action,
+        "ok": ok,
+        "reason": reason,
+        "detail": detail,
+    }
+    await websocket.send(json.dumps(payload, ensure_ascii=False))
+
+
+async def register_desktop(websocket, session_token: str) -> None:
+    payload = {
+        "type": "register",
+        "role": "desktop",
+        "token": session_token,
+    }
+    await websocket.send(json.dumps(payload, ensure_ascii=False))
+    log("desktop client register requested")
+
+
+async def type_text(text: str) -> tuple[bool, str, str]:
     try:
         keyboard.write(text, delay=0.01)
-        log(f"输入成功: {text[:40]}")
-        return True
-    except Exception as error:
-        log(f"输入失败: {error}")
-        return False
+        log(f"text typed: {text[:60]!r}")
+        return (True, "ok", "已输入到电脑。")
+    except Exception as error:  # noqa: BLE001
+        reason, detail = classify_error(error)
+        log(f"text typing failed: {error}")
+        return (False, reason, detail)
 
 
-async def press_key(key: str) -> bool:
+async def press_key(key: str) -> tuple[bool, str, str]:
     try:
         keyboard.press_and_release(key)
-        log(f"按键成功: {key}")
-        return True
-    except Exception as error:
-        log(f"按键失败: {error}")
-        return False
+        log(f"key pressed: {key}")
+        return (True, "ok", "快捷键已发送到电脑。")
+    except Exception as error:  # noqa: BLE001
+        reason, detail = classify_error(error)
+        log(f"key press failed {key}: {error}")
+        return (False, reason, detail)
 
 
-async def smart_clear(char_count: str) -> bool:
+async def clear_target(char_count: int) -> tuple[bool, str, str]:
     try:
-        char_count_int = int(char_count)
-        log(f"智能清空开始: {char_count_int} 个字符")
-
         keyboard.press_and_release("ctrl+a")
         await asyncio.sleep(0.05)
         keyboard.press_and_release("delete")
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.08)
 
-        delete_count = min(char_count_int, 5000)
-        delete_duration = delete_count * DELETE_SPEED * 1.2
-        log(f"补充退格删除: {delete_count} 个字符，预计 {delete_duration:.1f} 秒")
-
-        for index in range(delete_count):
+        fallback_count = min(max(char_count, 0), FALLBACK_DELETE_LIMIT)
+        for _ in range(fallback_count):
             keyboard.press_and_release("backspace")
-            if (index + 1) % 100 == 0:
-                log(f"已删除 {index + 1}/{delete_count} 个字符")
             await asyncio.sleep(DELETE_SPEED)
 
-        log("清空完成")
-        return True
-    except Exception as error:
-        log(f"清空失败: {error}")
-        return False
+        log(f"target cleared: fallback_backspace={fallback_count}")
+        return (True, "ok", "电脑内容已清空。")
+    except Exception as error:  # noqa: BLE001
+        reason, detail = classify_error(error)
+        log(f"clear target failed: {error}")
+        return (False, reason, detail)
 
 
-async def receive_messages(server_url: str) -> None:
-    log(f"正在连接服务器: {server_url}")
+async def replace_all_text(text: str) -> tuple[bool, str, str]:
+    cleared, clear_reason, clear_detail = await clear_target(len(text))
+    if not cleared:
+        return (False, clear_reason, clear_detail)
+
+    if not text:
+        return (True, "ok", "电脑内容已同步为空。")
+
+    typed, type_reason, type_detail = await type_text(text)
+    if not typed:
+        return (False, type_reason, type_detail)
+
+    return (True, "ok", "整段内容已经同步到电脑。")
+
+
+async def handle_input_message(data: dict[str, object]) -> tuple[bool, str, str]:
+    msg_type = str(data.get("type", ""))
+    content = str(data.get("content", ""))
+
+    if msg_type == "text":
+        return await type_text(content)
+    if msg_type == "backspace":
+        return await press_key("backspace")
+    if msg_type == "enter":
+        return await press_key("enter")
+    if msg_type == "tab":
+        return await press_key("tab")
+    if msg_type == "space":
+        return await press_key("space")
+    if msg_type == "clear":
+        try:
+            clear_count = int(content)
+        except ValueError:
+            clear_count = 0
+        return await clear_target(clear_count)
+    if msg_type == "replace_all":
+        return await replace_all_text(content)
+
+    return (False, "unsupported_action", "电脑输入端暂不支持这个操作。")
+
+
+async def receive_messages(server_url: str, session_token: str) -> None:
+    log(f"connecting to {server_url}")
 
     while True:
         try:
             async with websockets.connect(server_url) as websocket:
-                await register_desktop(websocket)
-                log("已连接到服务器，等待手机输入。")
+                await register_desktop(websocket, session_token)
 
-                async for message in websocket:
-                    try:
-                        data = json.loads(message)
-                        msg_type = data.get("type")
-                        content = data.get("content", "")
+                async for raw_message in websocket:
+                    data = json.loads(raw_message)
+                    msg_type = str(data.get("type", ""))
 
-                        if msg_type == "presence":
-                            connected = data.get("connected", {})
-                            log(
-                                "连接状态更新: 手机={0} 电脑输入端={1}".format(
-                                    connected.get("mobile", False),
-                                    connected.get("desktop", False),
-                                )
+                    if msg_type == "auth":
+                        if data.get("ok"):
+                            log("desktop client authenticated")
+                        else:
+                            log(f"desktop client rejected: {data.get('reason', 'unknown')}")
+                        continue
+
+                    if msg_type == "presence":
+                        connected = data.get("connected", {})
+                        log(
+                            "presence: mobile={0} desktop={1}".format(
+                                connected.get("mobile", False),
+                                connected.get("desktop", False),
                             )
-                            continue
+                        )
+                        continue
 
-                        if msg_type == "text":
-                            await type_text(content)
-                        elif msg_type == "backspace":
-                            await press_key("backspace")
-                        elif msg_type == "enter":
-                            await press_key("enter")
-                        elif msg_type == "tab":
-                            await press_key("tab")
-                        elif msg_type == "space":
-                            await press_key("space")
-                        elif msg_type == "clear":
-                            await smart_clear(content)
-                    except json.JSONDecodeError as error:
-                        log(f"JSON解析错误: {error}")
-        except (websockets.exceptions.ConnectionClosed, ConnectionError):
-            log("连接断开，3秒后重连...")
+                    message_id = str(data.get("messageId", ""))
+                    if not message_id:
+                        log(f"ignored message without messageId: {msg_type}")
+                        continue
+
+                    ok, reason, detail = await handle_input_message(data)
+                    await send_ack(websocket, message_id, msg_type, ok, reason, detail)
+        except (ConnectionClosed, ConnectionError):
+            log("connection closed, retrying in 3s")
             await asyncio.sleep(3)
-        except Exception as error:
-            log(f"客户端错误: {error}")
+        except Exception as error:  # noqa: BLE001
+            log(f"desktop client error: {error}")
             await asyncio.sleep(3)
 
 
 if __name__ == "__main__":
     args = parse_args()
     log("=" * 60)
-    log("语音输入同步 - 电脑端客户端")
-    log(f"启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log("VoiceInputSync desktop client ready")
+    log(f"started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     try:
-        asyncio.run(receive_messages(args.ws_url))
+        asyncio.run(receive_messages(args.ws_url, args.session_token))
     except KeyboardInterrupt:
-        log("客户端已退出")
+        log("desktop client exited")

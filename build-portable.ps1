@@ -40,6 +40,7 @@ $runtimeRoot = Join-Path $packageRoot "_runtime"
 $zipPath = Join-Path $releaseRoot ($productName + ".zip")
 $iconScript = Join-Path $projectRoot "generate_app_icon.py"
 $iconPath = Join-Path $projectRoot "assets\voice-sync-icon.ico"
+$versionInfoPath = Join-Path $projectRoot "pyinstaller-version.txt"
 $utf8Bom = [System.Text.UTF8Encoding]::new($true)
 $asciiEncoding = [System.Text.Encoding]::ASCII
 
@@ -72,6 +73,7 @@ foreach ($target in $buildTargets) {
         "--console",
         "--name", $target.Name,
         "--icon", $iconPath,
+        "--version-file", $versionInfoPath,
         "--distpath", $distRoot,
         "--workpath", $workRoot,
         "--specpath", $specRoot,
@@ -90,6 +92,7 @@ Copy-Item (Join-Path $projectRoot "favicon.svg") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "site.webmanifest") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable-tray.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-stop.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "使用手册.md") $runtimeRoot -Force -ErrorAction SilentlyContinue

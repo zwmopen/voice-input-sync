@@ -20,6 +20,7 @@ $HttpExe = Join-Path $BaseDir "VoiceInputSyncHttp.exe"
 $WsExe = Join-Path $BaseDir "VoiceInputSyncWs.exe"
 $ClientExe = Join-Path $BaseDir "VoiceInputSyncClient.exe"
 $QrExe = Join-Path $BaseDir "VoiceInputSyncQr.exe"
+$TrayScript = Join-Path $BaseDir "portable-tray.ps1"
 $StartBat = Join-Path $PackageDir "双击启动语音输入同步.bat"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
 $ShortcutIcon = Join-Path $BaseDir "assets\voice-sync-icon.ico"
@@ -135,6 +136,10 @@ function Wait-PortReady {
     }
 
     return $false
+}
+
+function New-SessionToken {
+    return ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
 }
 
 function Get-AvailablePort {
@@ -290,6 +295,25 @@ function Ensure-DesktopShortcut {
     return $true
 }
 
+function Start-TrayResident {
+    if (-not (Test-Path $TrayScript)) {
+        Write-Log "Tray resident skipped: script missing."
+        return $false
+    }
+
+    try {
+        Start-Process -FilePath (Get-Command powershell.exe).Source `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $TrayScript) `
+            -WorkingDirectory $BaseDir `
+            -WindowStyle Hidden | Out-Null
+        Write-Log "Tray resident launch requested."
+        return $true
+    } catch {
+        Write-Log ("Tray resident failed: " + $_.Exception.Message)
+        return $false
+    }
+}
+
 function Read-RuntimeConfig {
     if (-not (Test-Path $RuntimeConfigFile)) {
         return $null
@@ -385,6 +409,11 @@ function Get-ExistingRunningSession {
     if ([string]::IsNullOrWhiteSpace($url)) {
         $lanIp = Get-LanIp
         $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    }
+
+    if ($url -notmatch "token=") {
+        Write-Log "Existing session ignored because URL has no session token."
+        return $null
     }
 
     $pageTarget = if (Test-Path $QrHtmlFile) { $QrHtmlFile } else { $url }
@@ -505,6 +534,7 @@ try {
                 $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
             }
 
+            Start-TrayResident | Out-Null
             Write-Log ("Reused existing running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
             Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话，没有重复启动。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
             return
@@ -538,6 +568,7 @@ try {
             $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
         }
 
+        Start-TrayResident | Out-Null
         Write-Log ("Reused healthy running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
         Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
         return
@@ -550,12 +581,13 @@ try {
     Show-Stage -Title "正在挑选可用端口" -Detail "被占用时会自动换一个，不会卡死。" -Emoji "🔎" -Color "DarkCyan" -Percent 40
     $httpPort = Get-AvailablePort -PreferredPort 8000
     $wsPort = Get-AvailablePort -PreferredPort 8765
+    $sessionToken = New-SessionToken
     Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort
 
     Show-Stage -Title "正在启动同步服务" -Detail ("网页端口 {0}，同步端口 {1}" -f $httpPort, $wsPort) -Emoji "⚙️" -Color "DarkCyan" -Percent 58
     Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments @("--port", $httpPort) | Out-Null
-    Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments @("--port", $wsPort) | Out-Null
-    Launch-PortableProcess -Name "client" -ExePath $ClientExe -Arguments @("--ws-url", "ws://127.0.0.1:$wsPort") | Out-Null
+    Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
+    Launch-PortableProcess -Name "client" -ExePath $ClientExe -Arguments @("--ws-url", "ws://127.0.0.1:$wsPort", "--session-token", $sessionToken) | Out-Null
 
     $httpOk = Wait-PortReady -Port $httpPort -TimeoutSeconds 20
     Write-Log "http port ready: $httpOk"
@@ -576,14 +608,14 @@ try {
     }
 
     $lanIp = Get-LanIp
-    $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html?token=$sessionToken" } else { "http://127.0.0.1:$httpPort/mobile.html?token=$sessionToken" }
     Set-Content -Path $LatestUrlFile -Value $url -Encoding UTF8
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
     $qrOk = $false
     if (Test-Path $QrExe) {
         try {
-            & $QrExe --url $url --svg $QrSvgFile --html $QrHtmlFile --ws-port $wsPort
+            & $QrExe --url $url --svg $QrSvgFile --html $QrHtmlFile --ws-port $wsPort --session-token $sessionToken
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true
             }
@@ -614,6 +646,8 @@ try {
     } catch {
         Write-Log "Clipboard skipped."
     }
+
+    Start-TrayResident | Out-Null
 
     $pageTarget = if ($qrOk) { $QrHtmlFile } else { $url }
     $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent

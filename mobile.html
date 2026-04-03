@@ -3,12 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#3f86ff">
+    <meta name="theme-color" content="#d07f2a">
     <title>语音输入同步</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/assets/voice-sync-icon.svg">
     <link rel="manifest" href="/site.webmanifest">
     <style>
+        :root {
+            --paper: #e6ebf2;
+            --card: rgba(231, 236, 243, 0.98);
+            --text: #2b3b4f;
+            --muted: #6f7f94;
+            --accent: #d07f2a;
+            --accent-strong: #b86712;
+            --accent-soft: rgba(208, 127, 42, 0.12);
+            --green: #278659;
+            --green-soft: rgba(39, 134, 89, 0.12);
+            --red: #c14e4a;
+            --red-soft: rgba(193, 78, 74, 0.12);
+            --blue: #325f94;
+            --shadow-up: 16px 16px 30px rgba(174, 183, 195, 0.82), -16px -16px 30px rgba(255, 255, 255, 0.96);
+            --shadow-down: inset 8px 8px 14px rgba(178, 187, 199, 0.76), inset -8px -8px 14px rgba(255, 255, 255, 0.92);
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -16,383 +33,576 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #e0e5ec;
             min-height: 100vh;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            padding: 16px;
+            color: var(--text);
+            font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+            background:
+                radial-gradient(circle at top left, rgba(208, 127, 42, 0.12), transparent 26%),
+                radial-gradient(circle at top right, rgba(39, 134, 89, 0.10), transparent 20%),
+                linear-gradient(180deg, #edf2f7 0%, #dde4ec 100%);
             user-select: none;
         }
 
         .container {
-            width: 100%;
-            max-width: 600px;
+            width: min(680px, 100%);
+            margin: 0 auto;
         }
 
-        .neu-card {
-            background: #e0e5ec;
-            border-radius: 20px;
-            padding: 15px;
-            box-shadow: 8px 8px 16px #b8bec7, -8px -8px 16px #ffffff;
-            margin-bottom: 15px;
+        .card {
+            background: var(--card);
+            border-radius: 24px;
+            padding: 18px;
+            box-shadow: var(--shadow-up);
+            margin-bottom: 16px;
         }
 
         .header {
             text-align: center;
-            margin-bottom: 15px;
+            padding-top: 8px;
         }
 
         .header h1 {
-            font-size: 24px;
-            color: #5a6170;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
             margin-bottom: 8px;
-            font-weight: 700;
         }
 
         .subtitle {
+            color: var(--muted);
+            line-height: 1.7;
             font-size: 14px;
-            line-height: 1.6;
-            color: #7a8194;
-            margin-bottom: 12px;
+            margin-bottom: 14px;
         }
 
         .status-badge {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 20px;
-            border-radius: 20px;
+            padding: 9px 20px;
+            border-radius: 999px;
+            background: var(--paper);
+            color: var(--accent-strong);
+            box-shadow: 8px 8px 18px rgba(178, 187, 199, 0.82), -8px -8px 18px rgba(255, 255, 255, 0.96);
             font-size: 14px;
-            font-weight: 600;
-            color: #5a6170;
-        }
-
-        .status-badge.disconnected {
-            background: #e0e5ec;
-            box-shadow: 4px 4px 8px #b8bec7, -4px -4px 8px #ffffff;
+            font-weight: 700;
         }
 
         .status-badge.connected {
-            background: linear-gradient(145deg, #a8e6cf, #88d4ab);
+            background: linear-gradient(145deg, #7ed0a6, #4db57c);
             color: #fff;
-            box-shadow: 4px 4px 8px #b8bec7, -4px -4px 8px #ffffff;
+            box-shadow: 8px 8px 18px rgba(77, 181, 124, 0.34), -8px -8px 18px rgba(255, 255, 255, 0.92);
+        }
+
+        .status-badge.error {
+            background: linear-gradient(145deg, #e27f79, #c95852);
+            color: #fff;
+            box-shadow: 8px 8px 18px rgba(201, 88, 82, 0.3), -8px -8px 18px rgba(255, 255, 255, 0.92);
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
-            background: #ff6b6b;
+            background: currentColor;
+            opacity: 0.95;
         }
 
-        .status-badge.connected .status-dot {
-            background: #fff;
-            animation: pulse 2s infinite;
+        .guide {
+            color: var(--muted);
+            line-height: 1.8;
+            font-size: 14px;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .guide strong {
+            color: var(--text);
         }
 
         .stats {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 10px;
-            padding: 10px;
-            background: #e0e5ec;
-            border-radius: 10px;
-            box-shadow: inset 2px 2px 4px #b8bec7, inset -2px -2px 4px #ffffff;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
         }
 
-        .stat-item {
+        .stat {
+            padding: 14px 12px;
+            border-radius: 18px;
+            background: var(--paper);
+            box-shadow: var(--shadow-down);
             text-align: center;
-        }
-
-        .stat-value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #667eea;
         }
 
         .stat-label {
             font-size: 12px;
-            color: #7a8194;
-            margin-top: 2px;
-        }
-
-        .guide-card {
-            padding: 18px;
-        }
-
-        .guide-title {
-            font-size: 16px;
             font-weight: 700;
-            color: #495161;
-            margin-bottom: 8px;
+            color: var(--muted);
+            margin-bottom: 6px;
         }
 
-        .guide-text {
-            font-size: 14px;
-            color: #778092;
-            line-height: 1.7;
+        .stat-value {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--blue);
+            line-height: 1.4;
+        }
+
+        .mode-switch {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
             margin-bottom: 12px;
         }
 
-        .guide-steps {
-            display: grid;
-            gap: 8px;
-        }
-
-        .guide-step {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            border-radius: 12px;
-            background: #e0e5ec;
-            box-shadow: inset 2px 2px 5px #b8bec7, inset -2px -2px 5px #ffffff;
-            color: #5a6170;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .step-badge {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(145deg, #667eea, #764ba2);
-            color: #fff;
-            font-size: 12px;
+        .mode-button {
+            border: none;
+            border-radius: 18px;
+            padding: 14px 12px;
+            background: var(--paper);
+            box-shadow: 8px 8px 16px rgba(178, 187, 199, 0.76), -8px -8px 16px rgba(255, 255, 255, 0.96);
+            color: var(--text);
+            font-size: 14px;
             font-weight: 700;
-            flex: 0 0 auto;
+            cursor: pointer;
         }
 
-        .input-section {
-            margin-bottom: 15px;
+        .mode-button.active {
+            background: linear-gradient(145deg, #d99347, #c06e18);
+            color: #fff;
+            box-shadow: 8px 8px 18px rgba(192, 110, 24, 0.34), -8px -8px 18px rgba(255, 255, 255, 0.9);
+        }
+
+        .mode-hint {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.7;
+        }
+
+        .input-wrap {
+            margin-top: 14px;
         }
 
         textarea {
             width: 100%;
-            min-height: 180px;
+            min-height: 220px;
             border: none;
-            background: #e0e5ec;
-            border-radius: 15px;
-            padding: 15px;
-            font-size: 16px;
+            border-radius: 20px;
+            padding: 16px;
             resize: vertical;
             outline: none;
-            box-shadow: inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff;
-            font-family: inherit;
-            color: #5a6170;
-            line-height: 1.5;
+            background: var(--paper);
+            box-shadow: var(--shadow-down);
+            font: inherit;
+            font-size: 16px;
+            line-height: 1.65;
+            color: var(--text);
         }
 
         textarea::placeholder {
-            color: #a0a7b8;
+            color: #98a4b6;
+        }
+
+        .textarea-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 10px;
         }
 
         .char-count {
-            text-align: right;
-            font-size: 12px;
-            color: #7a8194;
-            margin-top: 8px;
-            font-weight: 500;
-        }
-
-        .control-buttons {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .neu-button {
-            padding: 12px 8px;
-            border: none;
-            border-radius: 12px;
-            background: #e0e5ec;
-            box-shadow: 4px 4px 8px #b8bec7, -4px -4px 8px #ffffff;
             font-size: 13px;
-            font-weight: 600;
-            color: #5a6170;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            flex-direction: column;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .sync-pill {
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent-strong);
+            font-size: 12px;
+            font-weight: 700;
         }
 
-        .neu-button:active {
-            box-shadow: inset 4px 4px 8px #b8bec7, inset -4px -4px 8px #ffffff;
+        .sync-pill.warn {
+            background: var(--red-soft);
+            color: var(--red);
         }
 
-        .neu-button .icon {
-            font-size: 18px;
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-top: 16px;
         }
 
-        .neu-button.primary {
-            background: linear-gradient(145deg, #667eea, #764ba2);
+        .action {
+            border: none;
+            border-radius: 16px;
+            padding: 14px 12px;
+            background: var(--paper);
+            box-shadow: 8px 8px 16px rgba(178, 187, 199, 0.76), -8px -8px 16px rgba(255, 255, 255, 0.96);
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .action.primary {
+            background: linear-gradient(145deg, #d99347, #c06e18);
             color: #fff;
-            box-shadow: 4px 4px 12px rgba(102, 126, 234, 0.4), -4px -4px 12px rgba(255, 255, 255, 0.8);
+            box-shadow: 8px 8px 18px rgba(192, 110, 24, 0.34), -8px -8px 18px rgba(255, 255, 255, 0.9);
         }
 
-        .neu-button.primary:active {
-            box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.2);
-        }
-
-        .neu-button.danger {
-            background: linear-gradient(145deg, #ff6b6b, #ee5a6f);
+        .action.danger {
+            background: linear-gradient(145deg, #df857f, #c55752);
             color: #fff;
-            box-shadow: 4px 4px 12px rgba(255, 107, 107, 0.4), -4px -4px 12px rgba(255, 255, 255, 0.8);
-        }
-
-        .neu-button.danger:active {
-            box-shadow: inset 4px 4px 8px rgba(0, 0, 0, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.2);
+            box-shadow: 8px 8px 18px rgba(197, 87, 82, 0.3), -8px -8px 18px rgba(255, 255, 255, 0.92);
         }
 
         .sync-status {
             position: fixed;
-            bottom: 20px;
             left: 50%;
-            transform: translateX(-50%);
-            background: #e0e5ec;
-            padding: 12px 25px;
-            border-radius: 25px;
-            box-shadow: 4px 4px 12px #b8bec7, -4px -4px 12px #ffffff;
+            bottom: 24px;
+            transform: translateX(-50%) translateY(22px);
+            min-width: min(86vw, 460px);
+            max-width: min(90vw, 520px);
+            padding: 14px 18px;
+            border-radius: 20px;
+            background: var(--card);
+            box-shadow: var(--shadow-up);
+            color: var(--text);
             font-size: 14px;
-            font-weight: 600;
-            color: #5a6170;
-            display: none;
-            z-index: 1000;
+            font-weight: 700;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
         }
 
         .sync-status.show {
-            display: block;
-            animation: fadeInUp 0.3s ease;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
         }
 
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translate(-50%, 20px);
+        .sync-status.pending {
+            color: var(--accent-strong);
+        }
+
+        .sync-status.success {
+            color: var(--green);
+        }
+
+        .sync-status.error {
+            color: var(--red);
+        }
+
+        @media (max-width: 540px) {
+            body {
+                padding: 12px;
             }
-            to {
-                opacity: 1;
-                transform: translate(-50%, 0);
+
+            .card {
+                border-radius: 20px;
+                padding: 16px;
+            }
+
+            .stats,
+            .actions {
+                grid-template-columns: 1fr;
+            }
+
+            textarea {
+                min-height: 200px;
+            }
+
+            .textarea-meta {
+                flex-direction: column;
+                align-items: flex-start;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🎤 语音输入同步</h1>
-            <div class="subtitle">手机说话，电脑同步打字。先在电脑上点好光标，再开始输入。</div>
-            <div class="status-badge disconnected" id="statusBadge">
+        <section class="card header">
+            <h1>语音输入同步</h1>
+            <p class="subtitle">手机说话或打字，电脑同步输入。先在电脑上点好目标输入框，再开始操作。</p>
+            <div class="status-badge" id="statusBadge">
                 <span class="status-dot"></span>
-                <span id="statusText">未连接</span>
+                <span id="statusText">等待连接</span>
             </div>
-        </div>
+        </section>
 
-        <div class="neu-card guide-card">
-            <div class="guide-title">第一次用，先看这三步</div>
-            <div class="guide-text">这个页面只负责把你的输入同步到电脑当前光标位置，不会替你决定输入到哪里。</div>
-            <div class="guide-steps">
-                <div class="guide-step"><span class="step-badge">1</span><span>先去电脑上，把光标点到你要输入的位置。</span></div>
-                <div class="guide-step"><span class="step-badge">2</span><span>保持这个手机页面开着，直接语音输入或手动输入。</span></div>
-                <div class="guide-step"><span class="step-badge">3</span><span>如果手机已连接但电脑不打字，请回电脑使用管理员启动。</span></div>
-            </div>
-        </div>
+        <section class="card">
+            <p class="guide"><strong>第一次用就记住一句话：</strong>这个页面负责把你的输入发到电脑，不会替你决定要输入到哪里。真正要输入的窗口，还是要你先回电脑点一下。</p>
+        </section>
 
-        <div class="neu-card">
+        <section class="card">
             <div class="stats">
-                <div class="stat-item">
-                    <div class="stat-value" id="totalChars">0</div>
-                    <div class="stat-label">总字数</div>
+                <div class="stat">
+                    <div class="stat-label">当前模式</div>
+                    <div class="stat-value" id="modeValue">实时同步</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="sessionChars">0</div>
-                    <div class="stat-label">本次字数</div>
+                <div class="stat">
+                    <div class="stat-label">电脑输入端</div>
+                    <div class="stat-value" id="desktopValue">未就绪</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value" id="deleteTime">0s</div>
-                    <div class="stat-label">清空时长</div>
+                <div class="stat">
+                    <div class="stat-label">草稿字数</div>
+                    <div class="stat-value" id="draftValue">0</div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="neu-card">
-            <div class="input-section">
-                <textarea id="textInput" placeholder="点击此输入框，使用手机语音输入法开始语音输入...
+        <section class="card">
+            <div class="mode-switch">
+                <button class="mode-button active" type="button" id="liveModeButton">实时同步</button>
+                <button class="mode-button" type="button" id="manualModeButton">整段同步</button>
+            </div>
+            <p class="mode-hint" id="modeHint">实时同步适合边说边打字；如果输入法会改写中间文字，切到整段同步更稳。</p>
 
-支持：豆包输入法、搜狗、讯飞等"></textarea>
-                <div class="char-count" id="charCount">0 字</div>
+            <div class="input-wrap">
+                <textarea id="textInput" placeholder="在这里说话、输入或粘贴文字。&#10;&#10;实时同步：追加和尾部删除会自动同步。&#10;整段同步：编辑完成后点“整段同步到电脑”。"></textarea>
+                <div class="textarea-meta">
+                    <div class="char-count" id="charCount">0 字</div>
+                    <div class="sync-pill" id="syncPill">电脑内容已跟上</div>
+                </div>
             </div>
 
-            <div class="control-buttons">
-                <button class="neu-button danger" onclick="clearAll()">
-                    <span class="icon">🗑️</span>
-                    <span>清空</span>
-                </button>
-                <button class="neu-button" onclick="sendEnter()">
-                    <span class="icon">↵</span>
-                    <span>换行</span>
-                </button>
-                <button class="neu-button primary" onclick="sendAll()">
-                    <span class="icon">📤</span>
-                    <span>发送全部</span>
-                </button>
-                <button class="neu-button" onclick="sendBackspace()">
-                    <span class="icon">⌫</span>
-                    <span>删除</span>
-                </button>
-                <button class="neu-button" onclick="sendSpace()">
-                    <span class="icon">␣</span>
-                    <span>空格</span>
-                </button>
-                <button class="neu-button" onclick="sendTab()">
-                    <span class="icon">⇥</span>
-                    <span>Tab</span>
-                </button>
+            <div class="actions">
+                <button class="action primary" type="button" id="syncButton">整段同步到电脑</button>
+                <button class="action" type="button" id="clearButton">清空草稿</button>
+                <button class="action" type="button" id="spaceButton">插入空格</button>
+                <button class="action" type="button" id="newlineButton">插入换行</button>
+                <button class="action" type="button" id="backspaceButton">删除最后一个字</button>
+                <button class="action danger" type="button" id="clearComputerButton">清空电脑当前输入</button>
             </div>
-        </div>
+        </section>
     </div>
 
-    <div class="sync-status" id="syncStatus">✓ 已发送到电脑</div>
+    <div class="sync-status" id="syncStatus">准备中</div>
 
     <script>
+        const textInput = document.getElementById("textInput");
+        const statusBadge = document.getElementById("statusBadge");
+        const statusText = document.getElementById("statusText");
+        const desktopValue = document.getElementById("desktopValue");
+        const draftValue = document.getElementById("draftValue");
+        const charCount = document.getElementById("charCount");
+        const modeValue = document.getElementById("modeValue");
+        const modeHint = document.getElementById("modeHint");
+        const syncPill = document.getElementById("syncPill");
+        const syncStatus = document.getElementById("syncStatus");
+        const liveModeButton = document.getElementById("liveModeButton");
+        const manualModeButton = document.getElementById("manualModeButton");
+        const syncButton = document.getElementById("syncButton");
+        const clearButton = document.getElementById("clearButton");
+        const spaceButton = document.getElementById("spaceButton");
+        const newlineButton = document.getElementById("newlineButton");
+        const backspaceButton = document.getElementById("backspaceButton");
+        const clearComputerButton = document.getElementById("clearComputerButton");
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionToken = urlParams.get("token") || "";
+        const runtimeConfig = { wsPort: 8765 };
+
         let ws = null;
-        let lastText = '';
-        let typingTimeout = null;
-        let sessionCharCount = 0;
         let desktopReady = false;
-        const DELETE_SPEED = 0.012;
-        const runtimeConfig = {
-            wsPort: 8765
-        };
+        let composing = false;
+        let syncMode = "live";
+        let messageCounter = 0;
+        let lastAppliedText = "";
+        let pendingManualSyncId = "";
+        let statusTimer = null;
+
+        function nextMessageId() {
+            messageCounter += 1;
+            return `m-${Date.now()}-${messageCounter}`;
+        }
+
+        function showSyncStatus(message, tone = "pending", duration = 1800) {
+            syncStatus.textContent = message;
+            syncStatus.className = `sync-status show ${tone}`;
+            window.clearTimeout(statusTimer);
+            statusTimer = window.setTimeout(() => {
+                syncStatus.classList.remove("show");
+            }, duration);
+        }
+
+        function updateConnectionBadge(state) {
+            statusBadge.className = "status-badge";
+
+            if (state === "connected") {
+                statusBadge.classList.add("connected");
+                statusText.textContent = "已连接";
+                return;
+            }
+
+            if (state === "error") {
+                statusBadge.classList.add("error");
+                statusText.textContent = "链接无效";
+                return;
+            }
+
+            statusText.textContent = "等待连接";
+        }
+
+        function setSyncPill(message, tone = "normal") {
+            syncPill.textContent = message;
+            syncPill.className = "sync-pill";
+            if (tone === "warn") {
+                syncPill.classList.add("warn");
+            }
+        }
+
+        function updateStats() {
+            const text = textInput.value;
+            draftValue.textContent = String(text.length);
+            charCount.textContent = `${text.length} 字`;
+        }
+
+        function updateDesktopState() {
+            desktopValue.textContent = desktopReady ? "已就绪" : "未就绪";
+        }
+
+        function updateModeUi() {
+            const liveActive = syncMode === "live";
+            liveModeButton.classList.toggle("active", liveActive);
+            manualModeButton.classList.toggle("active", !liveActive);
+            modeValue.textContent = liveActive ? "实时同步" : "整段同步";
+            modeHint.textContent = liveActive
+                ? "实时同步适合边说边打字；如果输入法会改写中间文字，切到整段同步更稳。"
+                : "整段同步不会在你编辑时自动发出去。编辑完成后，点一次“整段同步到电脑”即可。";
+            clearButton.textContent = liveActive ? "清空本地草稿" : "清空草稿";
+        }
+
+        function markDesynced(message = "检测到复杂改写，建议整段同步") {
+            setSyncPill(message, "warn");
+        }
+
+        function markPending(message = "已发送，等待电脑确认") {
+            setSyncPill(message);
+        }
+
+        function markSynced() {
+            setSyncPill("电脑内容已跟上");
+        }
+
+        function setMode(mode, showHint = true) {
+            syncMode = mode;
+            updateModeUi();
+            if (mode === "live" && textInput.value !== lastAppliedText) {
+                markDesynced("当前草稿和电脑内容可能不同，建议先整段同步");
+            }
+            if (showHint) {
+                showSyncStatus(
+                    mode === "live" ? "已切到实时同步。" : "已切到整段同步，更适合改写后的文本。",
+                    "pending"
+                );
+            }
+        }
 
         async function loadRuntimeConfig() {
             try {
-                const response = await fetch(`/runtime-config.json?ts=${Date.now()}`, {
-                    cache: 'no-store'
-                });
+                const response = await fetch(`/runtime-config.json?ts=${Date.now()}`, { cache: "no-store" });
                 if (!response.ok) {
                     return;
                 }
                 const data = await response.json();
-                if (typeof data.wsPort === 'number' && data.wsPort > 0) {
+                if (typeof data.wsPort === "number" && data.wsPort > 0) {
                     runtimeConfig.wsPort = data.wsPort;
                 }
             } catch (error) {
-                console.warn('读取运行配置失败，使用默认端口', error);
+                console.warn("读取运行配置失败，使用默认端口。", error);
             }
+        }
+
+        function analyzeTailChange(previousText, currentText) {
+            if (previousText === currentText) {
+                return { type: "noop" };
+            }
+
+            if (currentText.startsWith(previousText)) {
+                return {
+                    type: "append",
+                    text: currentText.slice(previousText.length)
+                };
+            }
+
+            if (previousText.startsWith(currentText)) {
+                return {
+                    type: "delete",
+                    count: previousText.length - currentText.length
+                };
+            }
+
+            return { type: "complex" };
+        }
+
+        function sendPayload(type, content, options = {}) {
+            if (!sessionToken) {
+                updateConnectionBadge("error");
+                showSyncStatus("这个手机地址已经失效，请重新扫码。", "error", 2200);
+                return "";
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showSyncStatus("手机和电脑还没连好，请稍候。", "error", 2000);
+                return "";
+            }
+
+            const messageId = nextMessageId();
+            const payload = {
+                type,
+                content,
+                timestamp: Date.now(),
+                messageId
+            };
+
+            ws.send(JSON.stringify(payload));
+
+            if (Object.prototype.hasOwnProperty.call(options, "optimisticText")) {
+                lastAppliedText = options.optimisticText;
+            }
+
+            if (options.manualSync) {
+                pendingManualSyncId = messageId;
+            }
+
+            showSyncStatus("已发送，等待电脑输入...", "pending");
+            return messageId;
+        }
+
+        function handleAck(data) {
+            if (data.ok) {
+                if (data.messageId && data.messageId === pendingManualSyncId) {
+                    pendingManualSyncId = "";
+                    lastAppliedText = textInput.value;
+                }
+                markSynced();
+                showSyncStatus(data.detail || "已输入到电脑。", "success");
+                return;
+            }
+
+            if (data.reason === "permission_denied") {
+                markDesynced("电脑权限不足，请回电脑管理员启动");
+                showSyncStatus("电脑输入权限不足，请回电脑端改用管理员启动。", "error", 2600);
+                return;
+            }
+
+            markDesynced("电脑内容可能没跟上，建议整段同步");
+            showSyncStatus(data.detail || "电脑输入失败，请回电脑端重试。", "error", 2600);
+        }
+
+        function updatePresence(connected) {
+            desktopReady = !!connected.desktop;
+            updateDesktopState();
+            updateConnectionBadge(connected.mobile ? "connected" : "waiting");
         }
 
         function connect() {
@@ -400,176 +610,170 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                console.log('已连接到服务器');
-                updateStatus(true);
-                ws.send(JSON.stringify({ type: 'register', role: 'mobile' }));
+                ws.send(JSON.stringify({ type: "register", role: "mobile", token: sessionToken }));
             };
 
             ws.onclose = () => {
-                console.log('连接断开，3秒后重连');
-                updateStatus(false);
                 desktopReady = false;
-                setTimeout(connect, 3000);
+                updateDesktopState();
+                updateConnectionBadge(sessionToken ? "waiting" : "error");
+                window.setTimeout(connect, 3000);
             };
 
-            ws.onerror = (error) => {
-                console.error('连接错误:', error);
-                updateStatus(false);
+            ws.onerror = () => {
+                updateConnectionBadge(sessionToken ? "waiting" : "error");
             };
 
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === 'presence') {
-                        const connected = data.connected || {};
-                        desktopReady = !!connected.desktop;
+                    if (data.type === "auth") {
+                        if (data.ok) {
+                            updateConnectionBadge("connected");
+                        } else {
+                            updateConnectionBadge("error");
+                            showSyncStatus("这个手机地址已经失效，请重新扫码。", "error", 2400);
+                        }
+                        return;
+                    }
+
+                    if (data.type === "presence") {
+                        updatePresence(data.connected || {});
+                        return;
+                    }
+
+                    if (data.type === "ack") {
+                        handleAck(data);
                     }
                 } catch (error) {
-                    console.error('状态消息解析失败:', error);
+                    console.error("状态消息解析失败:", error);
                 }
             };
         }
 
-        function updateStatus(connected) {
-            const badge = document.getElementById('statusBadge');
-            const text = document.getElementById('statusText');
-
-            if (connected) {
-                badge.className = 'status-badge connected';
-                text.textContent = '已连接';
-            } else {
-                badge.className = 'status-badge disconnected';
-                text.textContent = '未连接';
+        function syncRealtimeInput(currentText) {
+            const change = analyzeTailChange(lastAppliedText, currentText);
+            if (change.type === "noop") {
+                return;
             }
-        }
 
-        function sendData(type, content) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const data = {
-                    type: type,
-                    content: content,
-                    timestamp: Date.now()
-                };
-                ws.send(JSON.stringify(data));
-                showSyncStatus();
-            }
-        }
-
-        function showSyncStatus() {
-            const status = document.getElementById('syncStatus');
-            if (!desktopReady) {
-                status.textContent = '电脑输入端未就绪，请回电脑使用管理员启动';
-            } else {
-                status.textContent = '✓ 已发送到电脑';
-            }
-            status.classList.add('show');
-            clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                status.classList.remove('show');
-            }, 1500);
-        }
-
-        function updateStats() {
-            const text = document.getElementById('textInput').value;
-            const totalChars = text.length;
-
-            document.getElementById('totalChars').textContent = totalChars;
-            document.getElementById('sessionChars').textContent = sessionCharCount;
-
-            const deleteTime = Math.ceil(totalChars * DELETE_SPEED * 1.2);
-            document.getElementById('deleteTime').textContent = deleteTime + 's';
-        }
-
-        function sendBackspace() {
-            sendData('backspace', '');
-        }
-
-        function sendEnter() {
-            sendData('enter', '');
-            document.getElementById('textInput').value += '\n';
-            sessionCharCount += 1;
-            updateStats();
-        }
-
-        function sendSpace() {
-            sendData('text', ' ');
-            document.getElementById('textInput').value += ' ';
-            sessionCharCount += 1;
-            updateStats();
-        }
-
-        function sendTab() {
-            sendData('tab', '');
-            document.getElementById('textInput').value += '    ';
-            sessionCharCount += 4;
-            updateStats();
-        }
-
-        function clearAll() {
-            const text = document.getElementById('textInput').value;
-            const length = text.length;
-
-            if (length === 0) return;
-
-            document.getElementById('textInput').value = '';
-            lastText = '';
-            sessionCharCount = 0;
-            document.getElementById('charCount').textContent = '0 字';
-
-            updateStats();
-            sendData('clear', length.toString());
-            showSyncStatus();
-        }
-
-        function sendAll() {
-            const text = document.getElementById('textInput').value;
-            if (text) {
-                sendData('text', text);
-            }
-        }
-
-        // 监听输入变化
-        document.getElementById('textInput').addEventListener('input', function(e) {
-            const text = e.target.value;
-            const newContent = text.substring(lastText.length);
-
-            document.getElementById('charCount').textContent = `${text.length} 字`;
-
-            if (newContent) {
-                sendData('text', newContent);
-                lastText = text;
-                sessionCharCount += newContent.length;
-                updateStats();
-            }
-        });
-
-        // 监听手机键盘的删除键和回车键
-        document.getElementById('textInput').addEventListener('keydown', function(e) {
-            if (e.key === 'Backspace' || e.key === 'Delete') {
-                // 检测到删除键
-                const text = e.target.value;
-                if (text.length > 0) {
-                    sendData('backspace', '');
-                    lastText = text.substring(0, text.length - 1);
-                    sessionCharCount = Math.max(0, sessionCharCount - 1);
-                    updateStats();
+            if (change.type === "append") {
+                if (!change.text) {
+                    return;
                 }
-            } else if (e.key === 'Enter') {
-                // 检测到回车键
-                e.preventDefault();
-                sendData('enter', '');
-                e.target.value += '\n';
-                lastText = e.target.value;
-                sessionCharCount += 1;
-                updateStats();
+                sendPayload("text", change.text, { optimisticText: currentText });
+                markPending();
+                return;
+            }
+
+            if (change.type === "delete") {
+                if (change.count <= 0) {
+                    return;
+                }
+
+                if (currentText.length === 0) {
+                    sendPayload("clear", String(lastAppliedText.length), { optimisticText: "" });
+                    markSynced();
+                    return;
+                }
+
+                if (change.count <= 6) {
+                    for (let index = 0; index < change.count; index += 1) {
+                        sendPayload("backspace", "");
+                    }
+                    lastAppliedText = currentText;
+                    markPending();
+                    return;
+                }
+
+                sendPayload("replace_all", currentText, { optimisticText: currentText });
+                markPending("正在整段对齐电脑内容");
+                return;
+            }
+
+            setMode("manual");
+            markDesynced("检测到输入法改写，改用整段同步更稳");
+            showSyncStatus("检测到中间改写，请点“整段同步到电脑”对齐内容。", "error", 2600);
+        }
+
+        function handleTextareaInput() {
+            updateStats();
+            if (syncMode !== "live" || composing) {
+                markDesynced(syncMode === "live" ? "输入法处理中，稍后自动同步" : "当前是整段同步模式");
+                return;
+            }
+            syncRealtimeInput(textInput.value);
+        }
+
+        function insertTextAtEnd(value) {
+            textInput.value += value;
+            textInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        function deleteLastCharacter() {
+            if (!textInput.value) {
+                return;
+            }
+            textInput.value = textInput.value.slice(0, -1);
+            textInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+
+        function syncEntireDraft() {
+            sendPayload("replace_all", textInput.value, { optimisticText: textInput.value, manualSync: true });
+            markPending("正在整段同步到电脑");
+        }
+
+        function clearDraftOnly() {
+            textInput.value = "";
+            updateStats();
+            if (syncMode === "live") {
+                markDesynced("本地草稿已清空，电脑内容未变");
+                showSyncStatus("本地草稿已清空，电脑内容没有一起清空。", "pending");
+            } else {
+                markDesynced("草稿已清空，电脑内容不受影响");
+                showSyncStatus("草稿已清空。", "pending");
+            }
+        }
+
+        function clearComputerInput() {
+            textInput.value = "";
+            updateStats();
+            sendPayload("replace_all", "", { optimisticText: "", manualSync: true });
+            markPending("正在清空电脑当前输入");
+        }
+
+        liveModeButton.addEventListener("click", () => setMode("live"));
+        manualModeButton.addEventListener("click", () => setMode("manual"));
+        syncButton.addEventListener("click", syncEntireDraft);
+        clearButton.addEventListener("click", clearDraftOnly);
+        spaceButton.addEventListener("click", () => insertTextAtEnd(" "));
+        newlineButton.addEventListener("click", () => insertTextAtEnd("\n"));
+        backspaceButton.addEventListener("click", deleteLastCharacter);
+        clearComputerButton.addEventListener("click", clearComputerInput);
+
+        textInput.addEventListener("input", handleTextareaInput);
+        textInput.addEventListener("compositionstart", () => {
+            composing = true;
+            if (syncMode === "live") {
+                markDesynced("输入法处理中，结束后再同步");
             }
         });
+        textInput.addEventListener("compositionend", () => {
+            composing = false;
+            handleTextareaInput();
+        });
 
-        // 页面加载后连接
-        window.addEventListener('load', async () => {
+        window.addEventListener("load", async () => {
+            updateStats();
+            updateDesktopState();
+            updateModeUi();
+            if (!sessionToken) {
+                updateConnectionBadge("error");
+                showSyncStatus("这个手机地址没有会话令牌，请重新扫码。", "error", 2600);
+                return;
+            }
             await loadRuntimeConfig();
             connect();
-            updateStats();
         });
     </script>
 </body>

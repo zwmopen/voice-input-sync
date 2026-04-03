@@ -10,11 +10,13 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $zipPath = if ($SourceZip) { $SourceZip } else { Join-Path $scriptDir "语音输入同步-绿色版.zip" }
 $productName = "语音输入同步"
+$productVersion = "2026.04.03.1"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$productName"
 $desktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "$productName.lnk"
 $startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$productName"
 $startMenuShortcutPath = Join-Path $startMenuDir "$productName.lnk"
 $uninstallShortcutPath = Join-Path $startMenuDir "卸载$productName.lnk"
+$uninstallRegistryKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$productName"
 $tempExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-input-sync-install-" + [guid]::NewGuid().ToString("N"))
 $iconPath = Join-Path $installDir "_runtime\assets\voice-sync-icon.ico"
 $launcherBat = Join-Path $installDir "双击启动语音输入同步.bat"
@@ -90,6 +92,7 @@ try {
         "`$installDir = Split-Path -Parent `$MyInvocation.MyCommand.Path"
         "`$desktopShortcutPath = Join-Path ([Environment]::GetFolderPath('Desktop')) '语音输入同步.lnk'"
         "`$startMenuDir = Join-Path `$env:APPDATA 'Microsoft\Windows\Start Menu\Programs\语音输入同步'"
+        "`$registryKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\语音输入同步'"
         "try {"
         "    `$stopScript = Join-Path `$installDir '_runtime\portable-stop.ps1'"
         "    if (Test-Path `$stopScript) {"
@@ -100,6 +103,7 @@ try {
         "Start-Sleep -Milliseconds 500"
         "Remove-Item `$desktopShortcutPath -Force -ErrorAction SilentlyContinue"
         "Remove-Item `$startMenuDir -Recurse -Force -ErrorAction SilentlyContinue"
+        "Remove-Item `$registryKey -Force -Recurse -ErrorAction SilentlyContinue"
         "Set-Location ([System.IO.Path]::GetTempPath())"
         "Remove-Item `$installDir -Recurse -Force -ErrorAction SilentlyContinue"
         "Write-Host ''"
@@ -120,6 +124,16 @@ try {
     New-Shortcut -ShortcutPath $desktopShortcutPath -TargetPath $launcherBat -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
     New-Shortcut -ShortcutPath $startMenuShortcutPath -TargetPath $launcherBat -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
     New-Shortcut -ShortcutPath $uninstallShortcutPath -TargetPath $uninstallBat -WorkingDirectory $installDir -IconLocation $iconPath -Description ("卸载" + $productName)
+
+    New-Item -Path $uninstallRegistryKey -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayName" -Value $productName -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayVersion" -Value $productVersion -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "Publisher" -Value "zwmopen" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "InstallLocation" -Value $installDir -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayIcon" -Value $iconPath -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "UninstallString" -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $uninstallScript + '"') -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
 
     if ($LaunchAfterInstall -and (Test-Path $launcherBat)) {
         Start-Process -FilePath $launcherBat | Out-Null
