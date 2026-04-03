@@ -645,7 +645,7 @@ try {
     })
 
     $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $closeTimer.Interval = [TimeSpan]::FromMilliseconds(1700)
+    $closeTimer.Interval = [TimeSpan]::FromMilliseconds(5000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
         $window.Close()
