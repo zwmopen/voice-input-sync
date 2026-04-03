@@ -6,7 +6,13 @@ from pathlib import Path
 
 def resolve_root() -> Path:
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
+        exe_dir = Path(sys.executable).resolve().parent
+        # In PyInstaller onedir builds, the executable lives in a nested
+        # subfolder like _runtime/VoiceInputSyncHttp/. The actual static site
+        # assets live one level up at _runtime/.
+        if exe_dir.name.lower().startswith("voiceinputsync"):
+            return exe_dir.parent
+        return exe_dir
     return Path(__file__).resolve().parent
 
 
