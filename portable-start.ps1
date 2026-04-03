@@ -134,14 +134,24 @@ function Get-ExecutableProcess {
 function Get-ProcessIdValue {
     param($ProcessObject)
 
-    if ($null -ne $ProcessObject.Id) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["Id"]) {
         return [int]$ProcessObject.Id
     }
-    if ($null -ne $ProcessObject.ProcessId) {
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["ProcessId"]) {
         return [int]$ProcessObject.ProcessId
     }
 
     return 0
+}
+
+function Get-ProcessCommandLineValue {
+    param($ProcessObject)
+
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["CommandLine"]) {
+        return [string]$ProcessObject.CommandLine
+    }
+
+    return ""
 }
 
 function Enter-StartupMutex {
@@ -403,6 +413,97 @@ function Remove-LegacyStartupEntries {
         } catch {
             Write-Log ("Failed to remove legacy startup entry {0}: {1}" -f $target, $_.Exception.Message)
         }
+    }
+}
+
+function Get-LegacyCompanionProcesses {
+    $startupDir = [Environment]::GetFolderPath("Startup")
+    $batPath = [regex]::Escape((Join-Path $startupDir "voice-input-sync-startup.bat"))
+    $vbsPath = [regex]::Escape((Join-Path $startupDir "voice-input-sync-startup.vbs"))
+    $patterns = @(
+        '(?i)voice-input-sync.*\\client\.py(\s|$)',
+        '(?i)voice-input-sync.*\\server\.py(\s|$)',
+        '(?i)voice-input-sync.*\\autostart\.ps1(\s|$)',
+        $batPath,
+        $vbsPath
+    )
+
+    $legacyProcesses = New-Object System.Collections.Generic.List[object]
+    foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        foreach ($pattern in $patterns) {
+            if ($commandLine -match $pattern) {
+                [void]$legacyProcesses.Add($proc)
+                break
+            }
+        }
+    }
+
+    return @($legacyProcesses.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
+}
+
+function Get-LegacyHttpProcesses {
+    param([bool]$IncludeCompanionHttp = $false)
+
+    if (-not $IncludeCompanionHttp) {
+        return @()
+    }
+
+    $legacyHttpProcesses = New-Object System.Collections.Generic.List[object]
+    foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        if ($commandLine -match '(?i)-m\s+http\.server\s+8000(\s|$)') {
+            [void]$legacyHttpProcesses.Add($proc)
+        }
+    }
+
+    return @($legacyHttpProcesses.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
+}
+
+function Stop-LegacyProcesses {
+    $companions = @(Get-LegacyCompanionProcesses)
+    $targets = New-Object System.Collections.Generic.List[object]
+
+    foreach ($proc in $companions) {
+        [void]$targets.Add($proc)
+    }
+
+    if ($companions.Count -gt 0) {
+        foreach ($proc in @(Get-LegacyHttpProcesses -IncludeCompanionHttp $true)) {
+            [void]$targets.Add($proc)
+        }
+    }
+
+    $targets = @($targets.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
+    $stopped = 0
+
+    foreach ($proc in $targets) {
+        $procId = Get-ProcessIdValue -ProcessObject $proc
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+        try {
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            $stopped++
+            Write-Log ("Legacy cleanup stopped PID={0} CMD={1}" -f $procId, $commandLine)
+        } catch {
+            Write-Log ("Legacy cleanup failed PID={0}: {1}" -f $procId, $_.Exception.Message)
+        }
+    }
+
+    if ($stopped -gt 0) {
+        Start-Sleep -Milliseconds 200
+    }
+
+    return [pscustomobject]@{
+        Found = $targets.Count
+        Stopped = $stopped
     }
 }
 
@@ -750,6 +851,7 @@ function Update-ShareArtifacts {
 try {
     Write-Log "=== portable-start.ps1 started ==="
     Show-Stage -Title "正在准备启动环境" -Detail "通常只要几秒，请稍候。" -Emoji "🚀" -Color "Yellow" -Percent 8
+    $forceFreshSession = $false
 
     if (-not (Enter-StartupMutex)) {
         Write-Log "Startup mutex already held by another launcher."
@@ -788,6 +890,18 @@ try {
     try {
         Remove-LegacyStartupEntries
 
+        $legacyCleanup = Stop-LegacyProcesses
+        if ($legacyCleanup.Found -gt 0) {
+            $forceFreshSession = $legacyCleanup.Stopped -gt 0
+            $legacyDetail = if ($legacyCleanup.Stopped -gt 0) {
+                "发现旧版后台残留，已经替你收干净。"
+            } else {
+                "发现旧版后台残留，但这次没能完全结束。"
+            }
+            Show-Stage -Title "正在清理旧版本残留" -Detail $legacyDetail -Emoji "🧼" -Color "DarkCyan" -Percent 14
+            Write-Log ("Legacy cleanup summary: found={0} stopped={1}" -f $legacyCleanup.Found, $legacyCleanup.Stopped)
+        }
+
         Show-Stage -Title "正在检查桌面快捷方式" -Detail "只在需要时才会更新桌面入口。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
         $shortcutOk = Ensure-DesktopShortcut
         Write-Log ("Desktop shortcut status: {0}" -f $shortcutOk)
@@ -795,7 +909,7 @@ try {
         Write-Log ("Desktop shortcut failed: " + $_.Exception.Message)
     }
 
-    $existingSession = Get-ExistingRunningSession
+    $existingSession = if ($forceFreshSession) { $null } else { Get-ExistingRunningSession }
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
         [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken)

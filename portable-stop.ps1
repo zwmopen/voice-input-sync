@@ -87,6 +87,16 @@ function Get-ProcessIdValue {
     return 0
 }
 
+function Get-ProcessCommandLineValue {
+    param($ProcessObject)
+
+    if ($null -ne $ProcessObject -and $null -ne $ProcessObject.PSObject.Properties["CommandLine"]) {
+        return [string]$ProcessObject.CommandLine
+    }
+
+    return ""
+}
+
 function Get-ProcessNameValue {
     param($ProcessObject)
 
@@ -100,10 +110,80 @@ function Get-ProcessNameValue {
     return "unknown"
 }
 
+function Get-LegacyCompanionProcesses {
+    $startupDir = [Environment]::GetFolderPath("Startup")
+    $batPath = [regex]::Escape((Join-Path $startupDir "voice-input-sync-startup.bat"))
+    $vbsPath = [regex]::Escape((Join-Path $startupDir "voice-input-sync-startup.vbs"))
+    $patterns = @(
+        '(?i)voice-input-sync.*\\client\.py(\s|$)',
+        '(?i)voice-input-sync.*\\server\.py(\s|$)',
+        '(?i)voice-input-sync.*\\autostart\.ps1(\s|$)',
+        $batPath,
+        $vbsPath
+    )
+
+    $legacyProcesses = New-Object System.Collections.Generic.List[object]
+    foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        foreach ($pattern in $patterns) {
+            if ($commandLine -match $pattern) {
+                [void]$legacyProcesses.Add($proc)
+                break
+            }
+        }
+    }
+
+    return @($legacyProcesses.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
+}
+
+function Get-LegacyHttpProcesses {
+    param([bool]$IncludeCompanionHttp = $false)
+
+    if (-not $IncludeCompanionHttp) {
+        return @()
+    }
+
+    $legacyHttpProcesses = New-Object System.Collections.Generic.List[object]
+    foreach ($proc in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+
+        if ($commandLine -match '(?i)-m\s+http\.server\s+8000(\s|$)') {
+            [void]$legacyHttpProcesses.Add($proc)
+        }
+    }
+
+    return @($legacyHttpProcesses.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
+}
+
+function Get-LegacyProcesses {
+    $companions = @(Get-LegacyCompanionProcesses)
+    $targets = New-Object System.Collections.Generic.List[object]
+
+    foreach ($proc in $companions) {
+        [void]$targets.Add($proc)
+    }
+
+    if ($companions.Count -gt 0) {
+        foreach ($proc in @(Get-LegacyHttpProcesses -IncludeCompanionHttp $true)) {
+            [void]$targets.Add($proc)
+        }
+    }
+
+    return @($targets.ToArray() | Group-Object { Get-ProcessIdValue -ProcessObject $_ } | ForEach-Object { $_.Group[0] })
+}
+
 try {
     Write-Log "=== portable-stop.ps1 started ==="
 
-    $processes = @(Get-ManagedProcesses) + @(Get-ManagedAuxiliaryProcesses)
+    $processes = @(Get-ManagedProcesses) + @(Get-ManagedAuxiliaryProcesses) + @(Get-LegacyProcesses)
+    $processes = @($processes | Group-Object { Get-ProcessIdValue -ProcessObject $_ } | ForEach-Object { $_.Group[0] })
     $stopped = 0
 
     foreach ($proc in $processes) {
@@ -111,7 +191,7 @@ try {
             $procId = Get-ProcessIdValue -ProcessObject $proc
             Stop-Process -Id $procId -Force -ErrorAction Stop
             $stopped++
-            Write-Log ("Stopped PID={0} Name={1}" -f $procId, (Get-ProcessNameValue -ProcessObject $proc))
+            Write-Log ("Stopped PID={0} Name={1} CMD={2}" -f $procId, (Get-ProcessNameValue -ProcessObject $proc), (Get-ProcessCommandLineValue -ProcessObject $proc))
         } catch {
             Write-Log ("Stop failed PID={0}: {1}" -f (Get-ProcessIdValue -ProcessObject $proc), $_.Exception.Message)
         }
