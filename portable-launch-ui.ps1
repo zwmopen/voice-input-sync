@@ -681,7 +681,8 @@ try {
                     $script:CopyButton.Visibility = "Collapsed"
                 }
                 $script:LogButton.Visibility = "Collapsed"
-                if (-not $NoAutoClose -and -not $script:AutoCloseArmed) {
+                $isReuseSuccess = ([string]$status.title -like "*已经在运行*")
+                if (-not $NoAutoClose -and -not $script:AutoCloseArmed -and -not $isReuseSuccess) {
                     $script:AutoCloseArmed = $true
                     $closeTimer.Start()
                 }

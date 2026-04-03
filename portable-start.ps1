@@ -674,6 +674,62 @@ function Try-OpenPageWithCooldown {
     return $opened
 }
 
+function Update-ShareArtifacts {
+    param(
+        [string]$Url,
+        [int]$WsPort
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+
+    Set-Content -Path $LatestUrlFile -Value $Url -Encoding UTF8
+
+    $token = ""
+    try {
+        $uri = [Uri]$Url
+        $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+        $token = [string]$query.Get("token")
+    } catch {
+        $token = ""
+    }
+
+    $qrOk = $false
+    if (Test-Path $QrExe) {
+        try {
+            & $QrExe --url $Url --svg $QrSvgFile --html $QrHtmlFile --ws-port $WsPort --session-token $token
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
+                $qrOk = $true
+            }
+        } catch {
+            Write-Log ("QR refresh failed: " + $_.Exception.Message)
+        }
+    }
+
+    $shareText = @(
+        "语音输入同步"
+        ""
+        "优先用手机扫一扫电脑上的二维码。"
+        "如果扫码不方便，再在手机浏览器打开下面这个地址："
+        $Url
+        ""
+        "使用提醒"
+        "1. 手机和电脑要在同一个 Wi-Fi 或同一个局域网"
+        "2. 先把电脑光标点到你要输入的位置"
+        "3. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
+    ) -join "`r`n"
+    Set-Content -Path $ShareUrlFile -Value $shareText -Encoding UTF8
+
+    try {
+        Set-Clipboard -Value $Url
+    } catch {
+        Write-Log "Clipboard skipped."
+    }
+
+    return $qrOk
+}
+
 try {
     Write-Log "=== portable-start.ps1 started ==="
     Show-Stage -Title "正在准备启动环境" -Detail "通常只要几秒，请稍候。" -Emoji "🚀" -Color "Yellow" -Percent 8
@@ -684,6 +740,7 @@ try {
 
         $existingSession = Get-ExistingRunningSession
         if ($existingSession) {
+            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort)
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
@@ -718,6 +775,7 @@ try {
     $existingSession = Get-ExistingRunningSession
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
+        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort)
         $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
         $pageOpened = $false
         if ($shouldOpenPage) {
@@ -765,43 +823,10 @@ try {
 
     $lanIp = Get-LanIp
     $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html?token=$sessionToken" } else { "http://127.0.0.1:$httpPort/mobile.html?token=$sessionToken" }
-    Set-Content -Path $LatestUrlFile -Value $url -Encoding UTF8
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
-    $qrOk = $false
-    if (Test-Path $QrExe) {
-        try {
-            & $QrExe --url $url --svg $QrSvgFile --html $QrHtmlFile --ws-port $wsPort --session-token $sessionToken
-            if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
-                $qrOk = $true
-            }
-        } catch {
-            Write-Log ("QR generation failed: " + $_.Exception.Message)
-        }
-    } else {
-        Write-Log "QR executable missing."
-    }
+    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort
     Write-Log "QR ready: $qrOk"
-
-    $shareText = @(
-        "语音输入同步"
-        ""
-        "优先用手机扫一扫电脑上的二维码。"
-        "如果扫码不方便，再在手机浏览器打开下面这个地址："
-        $url
-        ""
-        "使用提醒"
-        "1. 手机和电脑要在同一个 Wi-Fi 或同一个局域网"
-        "2. 先把电脑光标点到你要输入的位置"
-        "3. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
-    ) -join "`r`n"
-    Set-Content -Path $ShareUrlFile -Value $shareText -Encoding UTF8
-
-    try {
-        Set-Clipboard -Value $url
-    } catch {
-        Write-Log "Clipboard skipped."
-    }
 
     Start-TrayResident | Out-Null
 
