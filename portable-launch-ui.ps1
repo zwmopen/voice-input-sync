@@ -15,14 +15,40 @@ $LogsDir = Join-Path $PackageDir "logs"
 $StartupScript = Join-Path $BaseDir "portable-start.ps1"
 $StatusFile = Join-Path $LogsDir "startup-status.json"
 $StartupLog = Join-Path $LogsDir "startup.log"
+$LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $CurrentUrl = ""
 $CurrentPageTarget = ""
 $PageOpened = $false
 $AutoCloseQueued = $false
+$LauncherMutexName = "Local\VoiceInputSyncPortableLauncher"
+$LauncherMutex = $null
+$OwnsLauncherMutex = $false
+$ReuseExistingLauncher = $false
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
-Remove-Item $StatusFile -Force -ErrorAction SilentlyContinue
+
+function Enter-LauncherMutex {
+    $createdNew = $false
+    $script:LauncherMutex = New-Object System.Threading.Mutex($true, $LauncherMutexName, [ref]$createdNew)
+    $script:OwnsLauncherMutex = [bool]$createdNew
+    $script:ReuseExistingLauncher = -not $script:OwnsLauncherMutex
+}
+
+function Exit-LauncherMutex {
+    if ($script:LauncherMutex) {
+        try {
+            if ($script:OwnsLauncherMutex) {
+                $script:LauncherMutex.ReleaseMutex()
+            }
+        } catch {
+        } finally {
+            $script:LauncherMutex.Dispose()
+            $script:LauncherMutex = $null
+            $script:OwnsLauncherMutex = $false
+        }
+    }
+}
 
 function Write-UiLog {
     param([string]$Message)
@@ -40,6 +66,18 @@ function Read-StartupStatus {
         return Get-Content -Raw -LiteralPath $StatusFile -Encoding UTF8 | ConvertFrom-Json
     } catch {
         return $null
+    }
+}
+
+function Read-LatestUrl {
+    if (-not (Test-Path $LatestUrlFile)) {
+        return ""
+    }
+
+    try {
+        return (Get-Content -Raw -LiteralPath $LatestUrlFile -Encoding UTF8).Trim()
+    } catch {
+        return ""
     }
 }
 
@@ -64,7 +102,7 @@ function Invoke-ShellOpen {
         return $true
     } catch {
         try {
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", "", $Target -WindowStyle Hidden | Out-Null
+            Start-Process -FilePath $Target | Out-Null
             Write-UiLog ("Opened target via fallback: {0}" -f $Target)
             return $true
         } catch {
@@ -105,6 +143,13 @@ function Copy-PhoneUrl {
     }
 }
 
+Enter-LauncherMutex
+if (-not $ReuseExistingLauncher) {
+    Remove-Item $StatusFile -Force -ErrorAction SilentlyContinue
+} else {
+    Write-UiLog "Launcher already running; this window will reuse existing state."
+}
+
 $startupArgs = @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
@@ -113,8 +158,13 @@ $startupArgs = @(
     "-OpenPageOnSuccess",
     "-StatusFile", $StatusFile
 )
-$StartupProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
-Write-UiLog "Launcher window started."
+$StartupProcess = $null
+if (-not $ReuseExistingLauncher) {
+    $StartupProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
+    Write-UiLog "Launcher window started."
+} else {
+    $CurrentUrl = Read-LatestUrl
+}
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "语音输入同步"
@@ -166,7 +216,7 @@ $subtitleLabel.Location = New-Object System.Drawing.Point(90, 58)
 $subtitleLabel.Size = New-Object System.Drawing.Size(300, 22)
 $subtitleLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 9.5)
 $subtitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(113, 123, 137)
-$subtitleLabel.Text = "通常 5 秒左右，会自动打开扫码页。"
+$subtitleLabel.Text = if ($ReuseExistingLauncher) { "已经有一个启动窗口在工作了。" } else { "通常 5 秒左右，会自动打开扫码页。" }
 $card.Controls.Add($subtitleLabel)
 
 $badgeLabel = New-Object System.Windows.Forms.Label
@@ -184,7 +234,7 @@ $detailLabel.Location = New-Object System.Drawing.Point(24, 138)
 $detailLabel.Size = New-Object System.Drawing.Size(382, 32)
 $detailLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 11)
 $detailLabel.ForeColor = [System.Drawing.Color]::FromArgb(61, 73, 88)
-$detailLabel.Text = "正在准备环境..."
+$detailLabel.Text = if ($ReuseExistingLauncher) { "我不会重复启动，也不会重复开很多网页。" } else { "正在准备环境..." }
 $card.Controls.Add($detailLabel)
 
 $footerLabel = New-Object System.Windows.Forms.Label
@@ -192,7 +242,7 @@ $footerLabel.Location = New-Object System.Drawing.Point(24, 170)
 $footerLabel.Size = New-Object System.Drawing.Size(382, 18)
 $footerLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 8.8)
 $footerLabel.ForeColor = [System.Drawing.Color]::FromArgb(122, 130, 139)
-$footerLabel.Text = "准备好后会自动弹出扫码页。"
+$footerLabel.Text = if ($ReuseExistingLauncher) { "现有会话准备好后，点右下角就能重新打开扫码页。" } else { "准备好后会自动弹出扫码页。" }
 $card.Controls.Add($footerLabel)
 $script:FooterLabel = $footerLabel
 
@@ -276,7 +326,7 @@ $pollTimer.Add_Tick({
 
                 if (-not $script:PageOpened) {
                     $form.TopMost = $false
-                    if ($status.openHandled) {
+                    if ($ReuseExistingLauncher -or $status.openHandled) {
                         $script:PageOpened = $true
                     } else {
                         $script:PageOpened = Open-PageTarget -Target $script:CurrentPageTarget -FallbackUrl $script:CurrentUrl
@@ -329,7 +379,22 @@ $pollTimer.Add_Tick({
         }
     }
 
-    if ($StartupProcess.HasExited -and -not $status) {
+    if ($ReuseExistingLauncher -and -not $status) {
+        $latestUrl = Read-LatestUrl
+        if ($latestUrl) {
+            $script:CurrentUrl = $latestUrl
+            $script:CurrentPageTarget = $latestUrl
+            $badgeLabel.Text = "已在运行"
+            $badgeLabel.BackColor = [System.Drawing.Color]::FromArgb(35, 138, 91)
+            $titleLabel.Text = "语音输入同步已经在运行"
+            $detailLabel.Text = "这次没有重复启动。需要时点打开扫码页即可。"
+            $actionButton.Visible = $true
+            $copyButton.Visible = $true
+            $closeButton.Visible = $true
+        }
+    }
+
+    if ($StartupProcess -and $StartupProcess.HasExited -and -not $status) {
         Write-UiLog "Launcher exited without any startup status."
         $badgeLabel.Text = "启动失败"
         $badgeLabel.BackColor = [System.Drawing.Color]::FromArgb(206, 77, 62)
@@ -350,6 +415,7 @@ $form.Add_FormClosed({
     $pollTimer.Stop()
     $closeTimer.Stop()
     Write-UiLog "Launcher window closed."
+    Exit-LauncherMutex
 })
 
 [void]$form.ShowDialog()

@@ -25,6 +25,10 @@ $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
 $ShortcutIcon = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "语音输入同步.lnk"
 $StatusOutputFile = if ($StatusFile) { $StatusFile } else { Join-Path $LogsDir "startup-status.json" }
+$OpenStateFile = Join-Path $LogsDir "page-open-state.json"
+$StartupMutexName = "Local\VoiceInputSyncPortableStartup"
+$StartupMutex = $null
+$OwnsStartupMutex = $false
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 
@@ -67,12 +71,46 @@ function Write-Status {
     $payload | ConvertTo-Json -Compress | Set-Content -Path $StatusOutputFile -Encoding UTF8
 }
 
+function Read-Status {
+    if (-not (Test-Path $StatusOutputFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $StatusOutputFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
 function Get-ExecutableProcess {
     param([string]$ExecutablePath)
 
     return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         $_.ExecutablePath -and $_.ExecutablePath -eq $ExecutablePath
     })
+}
+
+function Enter-StartupMutex {
+    $createdNew = $false
+    $script:StartupMutex = New-Object System.Threading.Mutex($true, $StartupMutexName, [ref]$createdNew)
+    $script:OwnsStartupMutex = [bool]$createdNew
+    return $script:OwnsStartupMutex
+}
+
+function Exit-StartupMutex {
+    if ($script:StartupMutex) {
+        try {
+            if ($script:OwnsStartupMutex) {
+                $script:StartupMutex.ReleaseMutex()
+            }
+        } catch {
+        } finally {
+            $script:StartupMutex.Dispose()
+            $script:StartupMutex = $null
+            $script:OwnsStartupMutex = $false
+        }
+    }
 }
 
 function Test-TcpPortListening {
@@ -207,27 +245,61 @@ function Get-LanIp {
 
 function Ensure-DesktopShortcut {
     $shell = New-Object -ComObject WScript.Shell
-    $shortcut = $shell.CreateShortcut($DesktopShortcut)
+    $targetPath = ""
+    $arguments = ""
     if (Test-Path $LauncherScript) {
-        $shortcut.TargetPath = (Get-Command powershell.exe).Source
-        $shortcut.Arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $LauncherScript)
+        $targetPath = (Get-Command powershell.exe).Source
+        $arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $LauncherScript)
     } elseif (Test-Path $StartBat) {
-        $shortcut.TargetPath = $StartBat
+        $targetPath = $StartBat
     } else {
         Write-Log "Desktop shortcut skipped: no launcher target found."
         return $false
     }
 
+    $iconLocation = if (Test-Path $ShortcutIcon) { "$ShortcutIcon,0" } else { "" }
+
+    if (Test-Path $DesktopShortcut) {
+        try {
+            $existingShortcut = $shell.CreateShortcut($DesktopShortcut)
+            $sameTarget = ([string]$existingShortcut.TargetPath) -eq $targetPath
+            $sameArgs = ([string]$existingShortcut.Arguments) -eq $arguments
+            $sameWorkDir = ([string]$existingShortcut.WorkingDirectory) -eq $PackageDir
+            $sameIcon = ([string]$existingShortcut.IconLocation) -eq $iconLocation
+            if ($sameTarget -and $sameArgs -and $sameWorkDir -and $sameIcon) {
+                Write-Log "Desktop shortcut already up to date."
+                return $true
+            }
+        } catch {
+            Write-Log ("Desktop shortcut comparison failed: " + $_.Exception.Message)
+        }
+    }
+
+    $shortcut = $shell.CreateShortcut($DesktopShortcut)
+    $shortcut.TargetPath = $targetPath
+    $shortcut.Arguments = $arguments
     $shortcut.WorkingDirectory = $PackageDir
     $shortcut.Description = "语音输入同步"
 
-    if (Test-Path $ShortcutIcon) {
-        $shortcut.IconLocation = $ShortcutIcon
+    if ($iconLocation) {
+        $shortcut.IconLocation = $iconLocation
     }
 
     $shortcut.Save()
     Write-Log ("Desktop shortcut ready: {0}" -f $DesktopShortcut)
     return $true
+}
+
+function Read-RuntimeConfig {
+    if (-not (Test-Path $RuntimeConfigFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $RuntimeConfigFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
 }
 
 function Write-RuntimeConfig {
@@ -268,6 +340,90 @@ function Show-Stage {
     }
 }
 
+function Get-ExistingRunningSession {
+    $config = Read-RuntimeConfig
+    if (-not $config) {
+        return $null
+    }
+
+    try {
+        $httpPort = [int]$config.httpPort
+        $wsPort = [int]$config.wsPort
+    } catch {
+        return $null
+    }
+
+    if ($httpPort -le 0 -or $wsPort -le 0) {
+        return $null
+    }
+
+    if ((@(Get-ExecutableProcess -ExecutablePath $HttpExe)).Length -eq 0) {
+        return $null
+    }
+    if ((@(Get-ExecutableProcess -ExecutablePath $WsExe)).Length -eq 0) {
+        return $null
+    }
+    if ((@(Get-ExecutableProcess -ExecutablePath $ClientExe)).Length -eq 0) {
+        return $null
+    }
+    if (-not (Test-TcpPortListening -Port $httpPort)) {
+        return $null
+    }
+    if (-not (Test-TcpPortListening -Port $wsPort)) {
+        return $null
+    }
+
+    $url = ""
+    if (Test-Path $LatestUrlFile) {
+        try {
+            $url = (Get-Content -Raw -LiteralPath $LatestUrlFile -Encoding UTF8).Trim()
+        } catch {
+            $url = ""
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($url)) {
+        $lanIp = Get-LanIp
+        $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    }
+
+    $pageTarget = if (Test-Path $QrHtmlFile) { $QrHtmlFile } else { $url }
+
+    return [pscustomobject]@{
+        HttpPort = $httpPort
+        WsPort = $wsPort
+        Url = $url
+        PageTarget = $pageTarget
+    }
+}
+
+function Read-PageOpenState {
+    if (-not (Test-Path $OpenStateFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $OpenStateFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Write-PageOpenState {
+    param(
+        [string]$Target,
+        [string]$Url
+    )
+
+    $payload = [ordered]@{
+        target = $Target
+        url = $Url
+        openedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    }
+
+    $payload | ConvertTo-Json -Compress | Set-Content -Path $OpenStateFile -Encoding UTF8
+}
+
 function Open-PageTarget {
     param([string]$Target)
 
@@ -290,7 +446,7 @@ function Open-PageTarget {
     } catch {
         Write-Log ("Open page failed: " + $_.Exception.Message)
         try {
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", "", $Target -WindowStyle Hidden | Out-Null
+            Start-Process -FilePath $Target | Out-Null
             Write-Log ("Open page fallback succeeded: {0}" -f $Target)
             return $true
         } catch {
@@ -300,16 +456,91 @@ function Open-PageTarget {
     }
 }
 
+function Try-OpenPageWithCooldown {
+    param(
+        [string]$Target,
+        [string]$Url,
+        [int]$CooldownSeconds = 12
+    )
+
+    $openTarget = if ([string]::IsNullOrWhiteSpace($Target)) { $Url } else { $Target }
+    if ([string]::IsNullOrWhiteSpace($openTarget)) {
+        return $false
+    }
+
+    $state = Read-PageOpenState
+    if ($state -and $state.openedAt) {
+        try {
+            $lastOpened = [datetime]::ParseExact([string]$state.openedAt, "yyyy-MM-dd HH:mm:ss", $null)
+            $elapsed = ((Get-Date) - $lastOpened).TotalSeconds
+            if ($elapsed -lt $CooldownSeconds) {
+                Write-Log ("Skip page open due to cooldown: {0:N1}s" -f $elapsed)
+                return $true
+            }
+        } catch {
+            Write-Log "Page open cooldown state ignored."
+        }
+    }
+
+    $opened = Open-PageTarget -Target $openTarget
+    if ($opened) {
+        Write-PageOpenState -Target $Target -Url $Url
+    }
+    return $opened
+}
+
 try {
     Write-Log "=== portable-start.ps1 started ==="
     Show-Stage -Title "正在准备启动环境" -Detail "通常只要几秒，请稍候。" -Emoji "🚀" -Color "Yellow" -Percent 8
 
+    if (-not (Enter-StartupMutex)) {
+        Write-Log "Startup mutex already held by another launcher."
+        Show-Stage -Title "已经在启动中" -Detail "这次不再重复启动，也不会再重复开网页。" -Emoji "🫧" -Color "DarkCyan" -Percent 16
+
+        $existingSession = Get-ExistingRunningSession
+        if ($existingSession) {
+            $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
+            $pageOpened = $false
+            if ($shouldOpenPage) {
+                $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
+            }
+
+            Write-Log ("Reused existing running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
+            Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话，没有重复启动。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
+            return
+        }
+
+        $existingStatus = Read-Status
+        if ($existingStatus -and $existingStatus.state) {
+            Write-Status -State ([string]$existingStatus.state) -Title ([string]$existingStatus.title) -Detail ([string]$existingStatus.detail) -Emoji ([string]$existingStatus.emoji) -Percent ([int]$existingStatus.percent) -Url ([string]$existingStatus.url) -PageTarget ([string]$existingStatus.pageTarget) -OpenHandled ([bool]$existingStatus.openHandled)
+        } else {
+            Write-Status -State "running" -Title "已经在启动中" -Detail "上一个启动流程还没结束，请稍候几秒。" -Emoji "⏳" -Percent 18
+        }
+        return
+    }
+
+    Write-Log "Startup mutex acquired."
+
     try {
-        Show-Stage -Title "正在创建桌面快捷方式" -Detail "桌面入口会自动刷新到最新版。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
+        Show-Stage -Title "正在检查桌面快捷方式" -Detail "只在需要时才会更新桌面入口。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
         $shortcutOk = Ensure-DesktopShortcut
         Write-Log ("Desktop shortcut status: {0}" -f $shortcutOk)
     } catch {
         Write-Log ("Desktop shortcut failed: " + $_.Exception.Message)
+    }
+
+    $existingSession = Get-ExistingRunningSession
+    if ($existingSession) {
+        Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
+        $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
+        $pageOpened = $false
+        if ($shouldOpenPage) {
+            $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
+        }
+
+        Write-Log ("Reused healthy running session: HTTP={0} WS={1}" -f $existingSession.HttpPort, $existingSession.WsPort)
+        Write-Status -State "success" -Title "已经在运行" -Detail "我直接复用了当前会话。" -Emoji "✅" -Percent 100 -Url $existingSession.Url -PageTarget $existingSession.PageTarget -OpenHandled $pageOpened
+        return
     }
 
     Show-Stage -Title "正在清理旧进程" -Detail "把上一次残留的后台先收干净。" -Emoji "🧹" -Color "DarkCyan" -Percent 28
@@ -388,7 +619,7 @@ try {
     $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
     $pageOpened = $false
     if ($shouldOpenPage) {
-        $pageOpened = Open-PageTarget -Target $pageTarget
+        $pageOpened = Try-OpenPageWithCooldown -Target $pageTarget -Url $url
     }
     Write-Log "Startup result: HTTP=$httpOk WS=$wsOk CLIENT=$clientOk QR=$qrOk URL=$url"
     Write-Status -State "success" -Title "启动好了" -Detail "扫码页已经准备好，马上为你打开。" -Emoji "✅" -Percent 100 -Url $url -PageTarget $pageTarget -OpenHandled $pageOpened
@@ -411,4 +642,6 @@ try {
         Write-Host ""
     }
     exit 1
+} finally {
+    Exit-StartupMutex
 }
