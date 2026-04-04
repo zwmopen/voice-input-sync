@@ -353,17 +353,15 @@ function Get-LanIp {
 }
 
 function Get-PrimaryNetworkProfile {
-    $configs = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue | Where-Object {
-        $_.IPv4Address -and $_.NetAdapter -and $_.NetAdapter.Status -eq "Up"
-    })
+    $ips = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {
+        $_.IPAddress -and
+        $_.IPAddress -notlike "127.*" -and
+        $_.IPAddress -notlike "169.254*" -and
+        $_.PrefixOrigin -ne "WellKnown"
+    }
 
-    $candidates = foreach ($config in $configs) {
-        $ipv4 = ($config.IPv4Address | Select-Object -First 1).IPAddress
-        if (-not $ipv4 -or $ipv4 -like "127.*" -or $ipv4 -like "169.254*") {
-            continue
-        }
-
-        $alias = [string]$config.InterfaceAlias
+    $candidates = foreach ($ip in $ips) {
+        $alias = [string]$ip.InterfaceAlias
         if ($alias -match "vEthernet|WSL|Hyper-V|VMware|VirtualBox|Loopback|Docker|Tailscale|ZeroTier|Bluetooth") {
             continue
         }
@@ -371,7 +369,8 @@ function Get-PrimaryNetworkProfile {
         $priority = if ($alias -match "Wi-?Fi|WLAN") { 1 } elseif ($alias -match "Ethernet") { 2 } else { 9 }
         [pscustomobject]@{
             InterfaceAlias = $alias
-            IPAddress = [string]$ipv4
+            InterfaceIndex = [int]$ip.InterfaceIndex
+            IPAddress = [string]$ip.IPAddress
             Priority = $priority
         }
     }
@@ -381,7 +380,10 @@ function Get-PrimaryNetworkProfile {
         return $null
     }
 
-    $profile = Get-NetConnectionProfile -InterfaceAlias $primary.InterfaceAlias -ErrorAction SilentlyContinue | Select-Object -First 1
+    $profile = Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object {
+        $_.InterfaceIndex -eq $primary.InterfaceIndex
+    } | Select-Object -First 1
+
     return [pscustomobject]@{
         InterfaceAlias = $primary.InterfaceAlias
         IPAddress = $primary.IPAddress
@@ -390,15 +392,18 @@ function Get-PrimaryNetworkProfile {
     }
 }
 
-function Resolve-NpxLauncherPath {
-    foreach ($candidate in @("npx.cmd", "npx")) {
+function Resolve-TunnelLauncher {
+    foreach ($candidate in @("lt.cmd", "lt", "lt.ps1", "npx.cmd", "npx")) {
         $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
         if ($cmd) {
-            return $cmd.Source
+            return [pscustomobject]@{
+                Name = [string]$cmd.Name
+                Source = [string]$cmd.Source
+            }
         }
     }
 
-    return ""
+    return $null
 }
 
 function Get-TunnelProcesses {
@@ -464,24 +469,41 @@ function Start-LocalTunnelProcess {
         [string]$StdErrPath
     )
 
-    $npxPath = Resolve-NpxLauncherPath
-    if ([string]::IsNullOrWhiteSpace($npxPath)) {
-        Write-Log "Tunnel skipped: npx not found."
+    $launcher = Resolve-TunnelLauncher
+    if (-not $launcher) {
+        Write-Log "Tunnel skipped: no localtunnel launcher found."
         return ""
     }
 
     Remove-Item -LiteralPath $StdOutPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $StdErrPath -Force -ErrorAction SilentlyContinue
 
-    $commandLine = ('"{0}" --yes localtunnel --port {1}' -f $npxPath, $Port)
-    Start-Process -FilePath "cmd.exe" `
-        -ArgumentList @("/c", $commandLine) `
-        -WorkingDirectory $BaseDir `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $StdOutPath `
-        -RedirectStandardError $StdErrPath | Out-Null
+    if ($launcher.Name -like "npx*") {
+        $commandLine = ('"{0}" --yes localtunnel --port {1}' -f $launcher.Source, $Port)
+        Start-Process -FilePath "cmd.exe" `
+            -ArgumentList @("/c", $commandLine) `
+            -WorkingDirectory $BaseDir `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $StdOutPath `
+            -RedirectStandardError $StdErrPath | Out-Null
+    } elseif ($launcher.Source -like "*.ps1") {
+        Start-Process -FilePath "powershell.exe" `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $launcher.Source, "--port", $Port) `
+            -WorkingDirectory $BaseDir `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $StdOutPath `
+            -RedirectStandardError $StdErrPath | Out-Null
+    } else {
+        $commandLine = ('"{0}" --port {1}' -f $launcher.Source, $Port)
+        Start-Process -FilePath "cmd.exe" `
+            -ArgumentList @("/c", $commandLine) `
+            -WorkingDirectory $BaseDir `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $StdOutPath `
+            -RedirectStandardError $StdErrPath | Out-Null
+    }
 
-    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 18
+    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 12
     if ([string]::IsNullOrWhiteSpace($url)) {
         $errPreview = ""
         if (Test-Path $StdErrPath) {
@@ -532,13 +554,7 @@ function Get-ShareEndpoints {
     }
 
     $publicHttpUrl = Start-LocalTunnelProcess -Port $HttpPort -StdOutPath $TunnelHttpOutLog -StdErrPath $TunnelHttpErrLog
-    $publicWsBaseUrl = Start-LocalTunnelProcess -Port $WsPort -StdOutPath $TunnelWsOutLog -StdErrPath $TunnelWsErrLog
-    $publicWsUrl = ""
-    if (-not [string]::IsNullOrWhiteSpace($publicWsBaseUrl)) {
-        $publicWsUrl = $publicWsBaseUrl -replace '^https://', 'wss://'
-    }
-
-    if ([string]::IsNullOrWhiteSpace($publicHttpUrl) -or [string]::IsNullOrWhiteSpace($publicWsUrl)) {
+    if ([string]::IsNullOrWhiteSpace($publicHttpUrl)) {
         Write-Log "Tunnel mode unavailable, fallback to direct LAN address."
         return [pscustomobject]@{
             PrimaryUrl = $DirectUrl
@@ -555,7 +571,7 @@ function Get-ShareEndpoints {
         PrimaryUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
         DirectUrl = $DirectUrl
         PublicHttpUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
-        PublicWsUrl = $publicWsUrl
+        PublicWsUrl = ""
         StatusWsUrl = $statusWsUrl
         PreferTunnel = $true
         NetworkProfile = $networkProfile

@@ -419,6 +419,10 @@
         let lastAppliedText = "";
         let pendingManualSyncId = "";
         let statusTimer = null;
+        let bridgePollTimer = null;
+        let bridgeReconnectTimer = null;
+        let bridgeEventCursor = 0;
+        let bridgeSendChain = Promise.resolve();
 
         function nextMessageId() {
             messageCounter += 1;
@@ -536,18 +540,18 @@
         }
 
         function resolveWsUrl() {
+            const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
             const currentHost = window.location.hostname;
-            try {
-                if (runtimeConfig.publicHttpUrl && runtimeConfig.publicWsUrl) {
-                    const publicHost = new URL(runtimeConfig.publicHttpUrl).hostname;
-                    if (publicHost === currentHost) {
-                        return runtimeConfig.publicWsUrl;
-                    }
-                }
-            } catch (error) {
+            const currentPort = window.location.port ? `:${window.location.port}` : "";
+
+            if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+                return `${wsProtocol}://${currentHost}${currentPort}/ws`;
             }
 
-            const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+            if (runtimeConfig.publicWsUrl) {
+                return runtimeConfig.publicWsUrl;
+            }
+
             return `${wsProtocol}://${currentHost}:${runtimeConfig.wsPort || 8765}`;
         }
 
@@ -580,7 +584,7 @@
                 return "";
             }
 
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
+            if (!shouldUseHttpBridge() && (!ws || ws.readyState !== WebSocket.OPEN)) {
                 showSyncStatus("手机和电脑还没连好，请稍候。", "error", 2000);
                 return "";
             }
@@ -593,7 +597,6 @@
                 messageId
             };
 
-            ws.send(JSON.stringify(payload));
 
             if (Object.prototype.hasOwnProperty.call(options, "optimisticText")) {
                 lastAppliedText = options.optimisticText;
@@ -601,6 +604,17 @@
 
             if (options.manualSync) {
                 pendingManualSyncId = messageId;
+            }
+            if (shouldUseHttpBridge()) {
+                bridgeSendChain = bridgeSendChain
+                    .catch(() => {})
+                    .then(() => bridgePost("/api/send", { token: sessionToken, ...payload }))
+                    .catch(() => {
+                        updateConnectionBadge("waiting");
+                        showSyncStatus("手机和电脑还没连好，请稍候。", "error", 2000);
+                    });
+            } else {
+                ws.send(JSON.stringify(payload));
             }
 
             showSyncStatus("已发送，等待电脑输入...", "pending");
@@ -634,7 +648,127 @@
             updateConnectionBadge(connected.mobile ? "connected" : "waiting");
         }
 
+        function shouldUseHttpBridge() {
+            try {
+                if (runtimeConfig.publicHttpUrl) {
+                    return new URL(runtimeConfig.publicHttpUrl).hostname === window.location.hostname;
+                }
+            } catch (error) {
+            }
+            return window.location.protocol === "https:";
+        }
+
+        async function bridgePost(path, payload) {
+            const response = await fetch(path, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                cache: "no-store"
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        }
+
+        function handleAuthState(auth) {
+            if (!auth) {
+                return;
+            }
+            if (auth.ok) {
+                updateConnectionBadge("connected");
+                return;
+            }
+            if (auth.reason) {
+                updateConnectionBadge("waiting");
+                loadRuntimeConfig();
+                showSyncStatus("这个手机地址已经失效，请重新扫码。", "error", 2400);
+            }
+        }
+
+        function applyBridgeEnvelope(envelope) {
+            if (!envelope || typeof envelope !== "object") {
+                return;
+            }
+
+            if (typeof envelope.lastEventId === "number") {
+                bridgeEventCursor = Math.max(bridgeEventCursor, envelope.lastEventId);
+            }
+
+            handleAuthState(envelope.auth);
+
+            if (envelope.connected) {
+                updatePresence(envelope.connected);
+            }
+
+            if (!Array.isArray(envelope.events)) {
+                return;
+            }
+
+            for (const event of envelope.events) {
+                if (typeof event.id === "number") {
+                    bridgeEventCursor = Math.max(bridgeEventCursor, event.id);
+                }
+
+                if (event.type === "auth") {
+                    handleAuthState(event);
+                    continue;
+                }
+
+                if (event.type === "presence") {
+                    updatePresence(event.connected || {});
+                    continue;
+                }
+
+                if (event.type === "ack") {
+                    handleAck(event);
+                }
+            }
+        }
+
+        async function pollBridgeEvents() {
+            const response = await fetch(`/api/events?token=${encodeURIComponent(sessionToken)}&since=${bridgeEventCursor}&ts=${Date.now()}`, {
+                cache: "no-store"
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            applyBridgeEnvelope(data);
+        }
+
+        function connectViaHttpBridge() {
+            window.clearInterval(bridgePollTimer);
+            window.clearTimeout(bridgeReconnectTimer);
+
+            bridgePost("/api/register", { token: sessionToken })
+                .then((data) => {
+                    applyBridgeEnvelope(data);
+                    bridgePollTimer = window.setInterval(() => {
+                        pollBridgeEvents().catch(() => {
+                            window.clearInterval(bridgePollTimer);
+                            bridgePollTimer = null;
+                            desktopReady = false;
+                            updateDesktopState();
+                            updateConnectionBadge("waiting");
+                            bridgeReconnectTimer = window.setTimeout(connect, 3000);
+                        });
+                    }, 1200);
+                })
+                .catch(() => {
+                    desktopReady = false;
+                    updateDesktopState();
+                    updateConnectionBadge("waiting");
+                    bridgeReconnectTimer = window.setTimeout(connect, 3000);
+                });
+        }
+
         function connect() {
+            if (shouldUseHttpBridge()) {
+                connectViaHttpBridge();
+                return;
+            }
+
             const wsUrl = resolveWsUrl();
             ws = new WebSocket(wsUrl);
 

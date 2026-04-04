@@ -72,7 +72,7 @@ if (-not (Test-Path $venvPython)) {
 }
 
 Invoke-Step -FilePath $venvPython -Arguments @("-m", "pip", "install", "--upgrade", "pip")
-Invoke-Step -FilePath $venvPython -Arguments @("-m", "pip", "install", "pyinstaller", "websockets==11.0.3", "keyboard", "qrcode", "pillow")
+Invoke-Step -FilePath $venvPython -Arguments @("-m", "pip", "install", "pyinstaller", "websockets==11.0.3", "aiohttp", "keyboard", "qrcode", "pillow")
 Invoke-Step -FilePath $venvPython -Arguments @($iconScript)
 
 Remove-Item $pyiRoot -Recurse -Force -ErrorAction SilentlyContinue
