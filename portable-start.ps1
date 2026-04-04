@@ -24,6 +24,10 @@ $ShortcutIcon = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "语音输入同步.lnk"
 $StatusOutputFile = if ($StatusFile) { $StatusFile } else { Join-Path $LogsDir "startup-status.json" }
 $OpenStateFile = Join-Path $LogsDir "page-open-state.json"
+$TunnelHttpOutLog = Join-Path $LogsDir "tunnel-http.out.log"
+$TunnelHttpErrLog = Join-Path $LogsDir "tunnel-http.err.log"
+$TunnelWsOutLog = Join-Path $LogsDir "tunnel-ws.out.log"
+$TunnelWsErrLog = Join-Path $LogsDir "tunnel-ws.err.log"
 $StartupMutexName = "Local\VoiceInputSyncPortableStartup"
 $StartupMutex = $null
 $OwnsStartupMutex = $false
@@ -348,6 +352,216 @@ function Get-LanIp {
     ($candidates | Sort-Object Priority, Metric | Select-Object -First 1).IPAddress
 }
 
+function Get-PrimaryNetworkProfile {
+    $configs = @(Get-NetIPConfiguration -ErrorAction SilentlyContinue | Where-Object {
+        $_.IPv4Address -and $_.NetAdapter -and $_.NetAdapter.Status -eq "Up"
+    })
+
+    $candidates = foreach ($config in $configs) {
+        $ipv4 = ($config.IPv4Address | Select-Object -First 1).IPAddress
+        if (-not $ipv4 -or $ipv4 -like "127.*" -or $ipv4 -like "169.254*") {
+            continue
+        }
+
+        $alias = [string]$config.InterfaceAlias
+        if ($alias -match "vEthernet|WSL|Hyper-V|VMware|VirtualBox|Loopback|Docker|Tailscale|ZeroTier|Bluetooth") {
+            continue
+        }
+
+        $priority = if ($alias -match "Wi-?Fi|WLAN") { 1 } elseif ($alias -match "Ethernet") { 2 } else { 9 }
+        [pscustomobject]@{
+            InterfaceAlias = $alias
+            IPAddress = [string]$ipv4
+            Priority = $priority
+        }
+    }
+
+    $primary = $candidates | Sort-Object Priority | Select-Object -First 1
+    if (-not $primary) {
+        return $null
+    }
+
+    $profile = Get-NetConnectionProfile -InterfaceAlias $primary.InterfaceAlias -ErrorAction SilentlyContinue | Select-Object -First 1
+    return [pscustomobject]@{
+        InterfaceAlias = $primary.InterfaceAlias
+        IPAddress = $primary.IPAddress
+        NetworkCategory = if ($profile) { [string]$profile.NetworkCategory } else { "" }
+        Name = if ($profile) { [string]$profile.Name } else { "" }
+    }
+}
+
+function Resolve-NpxLauncherPath {
+    foreach ($candidate in @("npx.cmd", "npx")) {
+        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+        if ($cmd) {
+            return $cmd.Source
+        }
+    }
+
+    return ""
+}
+
+function Get-TunnelProcesses {
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and (
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8000(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8765(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8001(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8766(\s|$)'
+        )
+    })
+}
+
+function Stop-TunnelProcesses {
+    $stopped = 0
+    foreach ($proc in @(Get-TunnelProcesses | Group-Object ProcessId | ForEach-Object { $_.Group[0] })) {
+        $procId = Get-ProcessIdValue -ProcessObject $proc
+        try {
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            $stopped++
+            Write-Log ("Tunnel cleanup stopped PID={0} CMD={1}" -f $procId, (Get-ProcessCommandLineValue -ProcessObject $proc))
+        } catch {
+            Write-Log ("Tunnel cleanup failed PID={0}: {1}" -f $procId, $_.Exception.Message)
+        }
+    }
+
+    if ($stopped -gt 0) {
+        Start-Sleep -Milliseconds 250
+    }
+
+    return $stopped
+}
+
+function Wait-TunnelUrl {
+    param(
+        [string]$LogPath,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        if (Test-Path $LogPath) {
+            try {
+                foreach ($line in @(Get-Content -LiteralPath $LogPath -ErrorAction SilentlyContinue)) {
+                    if ($line -match '(https://[a-zA-Z0-9.-]+\.loca\.lt)') {
+                        return $matches[1]
+                    }
+                }
+            } catch {
+            }
+        }
+
+        Start-Sleep -Milliseconds 400
+    }
+
+    return ""
+}
+
+function Start-LocalTunnelProcess {
+    param(
+        [int]$Port,
+        [string]$StdOutPath,
+        [string]$StdErrPath
+    )
+
+    $npxPath = Resolve-NpxLauncherPath
+    if ([string]::IsNullOrWhiteSpace($npxPath)) {
+        Write-Log "Tunnel skipped: npx not found."
+        return ""
+    }
+
+    Remove-Item -LiteralPath $StdOutPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $StdErrPath -Force -ErrorAction SilentlyContinue
+
+    $commandLine = ('"{0}" --yes localtunnel --port {1}' -f $npxPath, $Port)
+    Start-Process -FilePath "cmd.exe" `
+        -ArgumentList @("/c", $commandLine) `
+        -WorkingDirectory $BaseDir `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $StdOutPath `
+        -RedirectStandardError $StdErrPath | Out-Null
+
+    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 18
+    if ([string]::IsNullOrWhiteSpace($url)) {
+        $errPreview = ""
+        if (Test-Path $StdErrPath) {
+            try {
+                $errPreview = ((Get-Content -LiteralPath $StdErrPath -Tail 5 -ErrorAction SilentlyContinue) -join " | ")
+            } catch {
+                $errPreview = ""
+            }
+        }
+        Write-Log ("Tunnel start failed on port {0}: {1}" -f $Port, $errPreview)
+    } else {
+        Write-Log ("Tunnel ready on port {0}: {1}" -f $Port, $url)
+    }
+
+    return $url
+}
+
+function Get-ShareEndpoints {
+    param(
+        [string]$DirectUrl,
+        [int]$HttpPort,
+        [int]$WsPort,
+        [string]$SessionToken
+    )
+
+    $statusWsUrl = "ws://127.0.0.1:$WsPort"
+    $networkProfile = Get-PrimaryNetworkProfile
+    $preferTunnel = $false
+    if ($networkProfile -and $networkProfile.NetworkCategory -eq "Public") {
+        $preferTunnel = $true
+    }
+
+    if (-not $preferTunnel) {
+        return [pscustomobject]@{
+            PrimaryUrl = $DirectUrl
+            DirectUrl = $DirectUrl
+            PublicHttpUrl = ""
+            PublicWsUrl = ""
+            StatusWsUrl = $statusWsUrl
+            PreferTunnel = $false
+            NetworkProfile = $networkProfile
+        }
+    }
+
+    $stoppedTunnels = Stop-TunnelProcesses
+    if ($stoppedTunnels -gt 0) {
+        Write-Log ("Cleaned previous tunnel processes: {0}" -f $stoppedTunnels)
+    }
+
+    $publicHttpUrl = Start-LocalTunnelProcess -Port $HttpPort -StdOutPath $TunnelHttpOutLog -StdErrPath $TunnelHttpErrLog
+    $publicWsBaseUrl = Start-LocalTunnelProcess -Port $WsPort -StdOutPath $TunnelWsOutLog -StdErrPath $TunnelWsErrLog
+    $publicWsUrl = ""
+    if (-not [string]::IsNullOrWhiteSpace($publicWsBaseUrl)) {
+        $publicWsUrl = $publicWsBaseUrl -replace '^https://', 'wss://'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($publicHttpUrl) -or [string]::IsNullOrWhiteSpace($publicWsUrl)) {
+        Write-Log "Tunnel mode unavailable, fallback to direct LAN address."
+        return [pscustomobject]@{
+            PrimaryUrl = $DirectUrl
+            DirectUrl = $DirectUrl
+            PublicHttpUrl = ""
+            PublicWsUrl = ""
+            StatusWsUrl = $statusWsUrl
+            PreferTunnel = $true
+            NetworkProfile = $networkProfile
+        }
+    }
+
+    return [pscustomobject]@{
+        PrimaryUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
+        DirectUrl = $DirectUrl
+        PublicHttpUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
+        PublicWsUrl = $publicWsUrl
+        StatusWsUrl = $statusWsUrl
+        PreferTunnel = $true
+        NetworkProfile = $networkProfile
+    }
+}
+
 function Ensure-DesktopShortcut {
     $shell = New-Object -ComObject WScript.Shell
     $targetPath = ""
@@ -554,7 +768,10 @@ function Write-RuntimeConfig {
     param(
         [int]$HttpPort,
         [int]$WsPort,
-        [string]$SessionToken = ""
+        [string]$SessionToken = "",
+        [string]$DirectUrl = "",
+        [string]$PublicHttpUrl = "",
+        [string]$PublicWsUrl = ""
     )
 
     $buildInfo = Read-BuildInfo
@@ -567,12 +784,15 @@ function Write-RuntimeConfig {
         httpPort = $HttpPort
         wsPort = $WsPort
         sessionToken = $SessionToken
+        directUrl = $DirectUrl
+        publicHttpUrl = $PublicHttpUrl
+        publicWsUrl = $PublicWsUrl
         buildId = $buildId
         updatedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
     $config | ConvertTo-Json -Compress | Set-Content -Path $RuntimeConfigFile -Encoding UTF8
-    Write-Log ("Runtime config written: HTTP={0} WS={1} BUILD={2}" -f $HttpPort, $WsPort, $buildId)
+    Write-Log ("Runtime config written: HTTP={0} WS={1} BUILD={2} PUBLIC={3}" -f $HttpPort, $WsPort, $buildId, ([string](-not [string]::IsNullOrWhiteSpace($PublicHttpUrl))))
 }
 
 function Test-HttpAssetHealthy {
@@ -698,6 +918,18 @@ function Get-ExistingRunningSession {
     if ($null -ne $config.PSObject.Properties["sessionToken"] -and $config.sessionToken) {
         $sessionToken = [string]$config.sessionToken
     }
+    $directUrl = ""
+    if ($null -ne $config.PSObject.Properties["directUrl"] -and $config.directUrl) {
+        $directUrl = [string]$config.directUrl
+    }
+    $publicHttpUrl = ""
+    if ($null -ne $config.PSObject.Properties["publicHttpUrl"] -and $config.publicHttpUrl) {
+        $publicHttpUrl = [string]$config.publicHttpUrl
+    }
+    $publicWsUrl = ""
+    if ($null -ne $config.PSObject.Properties["publicWsUrl"] -and $config.publicWsUrl) {
+        $publicWsUrl = [string]$config.publicWsUrl
+    }
 
     return [pscustomobject]@{
         HttpPort = $httpPort
@@ -705,6 +937,9 @@ function Get-ExistingRunningSession {
         Url = $url
         PageTarget = $pageTarget
         SessionToken = $sessionToken
+        DirectUrl = $directUrl
+        PublicHttpUrl = $publicHttpUrl
+        PublicWsUrl = $publicWsUrl
     }
 }
 
@@ -804,7 +1039,9 @@ function Update-ShareArtifacts {
     param(
         [string]$Url,
         [int]$WsPort,
-        [string]$SessionToken = ""
+        [string]$SessionToken = "",
+        [string]$StatusWsUrl = "",
+        [string]$SecondaryUrl = ""
     )
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
@@ -816,7 +1053,20 @@ function Update-ShareArtifacts {
     $qrOk = $false
     if (Test-Path $QrExe) {
         try {
-            & $QrExe --url $Url --svg $QrSvgFile --html $QrHtmlFile --ws-port $WsPort --session-token $SessionToken
+            $qrArgs = @(
+                "--url", $Url,
+                "--svg", $QrSvgFile,
+                "--html", $QrHtmlFile,
+                "--ws-port", $WsPort,
+                "--session-token", $SessionToken
+            )
+            if (-not [string]::IsNullOrWhiteSpace($StatusWsUrl)) {
+                $qrArgs += @("--status-ws-url", $StatusWsUrl)
+            }
+            if (-not [string]::IsNullOrWhiteSpace($SecondaryUrl)) {
+                $qrArgs += @("--secondary-url", $SecondaryUrl)
+            }
+            & $QrExe @qrArgs
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true
             }
@@ -832,8 +1082,11 @@ function Update-ShareArtifacts {
         "如果扫码不方便，再在手机浏览器打开下面这个地址："
         $Url
         ""
+        "局域网直连地址："
+        $(if ([string]::IsNullOrWhiteSpace($SecondaryUrl)) { "（当前没有单独的备用地址）" } else { $SecondaryUrl })
+        ""
         "使用提醒"
-        "1. 手机和电脑要在同一个 Wi-Fi 或同一个局域网"
+        "1. 热点或公共网络下，优先用上面的推荐地址"
         "2. 先把电脑光标点到你要输入的位置"
         "3. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
     ) -join "`r`n"
@@ -859,7 +1112,7 @@ try {
 
         $existingSession = Get-ExistingRunningSession
         if ($existingSession) {
-            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken)
+            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl)
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
@@ -909,10 +1162,16 @@ try {
         Write-Log ("Desktop shortcut failed: " + $_.Exception.Message)
     }
 
+    $networkProfile = Get-PrimaryNetworkProfile
+    if ($networkProfile -and $networkProfile.NetworkCategory -eq "Public") {
+        $forceFreshSession = $true
+        Write-Log ("Startup will refresh public-network share targets: {0} {1} {2}" -f $networkProfile.Name, $networkProfile.InterfaceAlias, $networkProfile.IPAddress)
+    }
+
     $existingSession = if ($forceFreshSession) { $null } else { Get-ExistingRunningSession }
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
-        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken)
+        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl)
         $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
         $pageOpened = $false
         if ($shouldOpenPage) {
@@ -959,10 +1218,15 @@ try {
     }
 
     $lanIp = Get-LanIp
-    $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    $directUrl = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+
+    Show-Stage -Title "正在准备手机地址" -Detail "热点网络下会自动补一个更稳的兼容地址。" -Emoji "🛰️" -Color "DarkCyan" -Percent 72
+    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
+    $url = $shareEndpoints.PrimaryUrl
+    Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
-    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken
+    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken -StatusWsUrl $shareEndpoints.StatusWsUrl -SecondaryUrl $shareEndpoints.DirectUrl
     Write-Log "QR ready: $qrOk"
 
     Start-TrayResident | Out-Null

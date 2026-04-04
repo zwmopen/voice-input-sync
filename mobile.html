@@ -409,7 +409,7 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         let sessionToken = urlParams.get("token") || "";
-        const runtimeConfig = { wsPort: 8765, sessionToken: "" };
+        const runtimeConfig = { wsPort: 8765, sessionToken: "", directUrl: "", publicHttpUrl: "", publicWsUrl: "" };
 
         let ws = null;
         let desktopReady = false;
@@ -521,9 +521,34 @@
                     runtimeConfig.sessionToken = data.sessionToken.trim();
                     sessionToken = runtimeConfig.sessionToken;
                 }
+                if (typeof data.directUrl === "string" && data.directUrl.trim()) {
+                    runtimeConfig.directUrl = data.directUrl.trim();
+                }
+                if (typeof data.publicHttpUrl === "string" && data.publicHttpUrl.trim()) {
+                    runtimeConfig.publicHttpUrl = data.publicHttpUrl.trim();
+                }
+                if (typeof data.publicWsUrl === "string" && data.publicWsUrl.trim()) {
+                    runtimeConfig.publicWsUrl = data.publicWsUrl.trim();
+                }
             } catch (error) {
                 console.warn("读取运行配置失败，使用默认端口。", error);
             }
+        }
+
+        function resolveWsUrl() {
+            const currentHost = window.location.hostname;
+            try {
+                if (runtimeConfig.publicHttpUrl && runtimeConfig.publicWsUrl) {
+                    const publicHost = new URL(runtimeConfig.publicHttpUrl).hostname;
+                    if (publicHost === currentHost) {
+                        return runtimeConfig.publicWsUrl;
+                    }
+                }
+            } catch (error) {
+            }
+
+            const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+            return `${wsProtocol}://${currentHost}:${runtimeConfig.wsPort || 8765}`;
         }
 
         function analyzeTailChange(previousText, currentText) {
@@ -610,7 +635,7 @@
         }
 
         function connect() {
-            const wsUrl = `ws://${window.location.hostname}:${runtimeConfig.wsPort || 8765}`;
+            const wsUrl = resolveWsUrl();
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {

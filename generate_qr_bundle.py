@@ -27,10 +27,32 @@ def build_svg(url: str, output_path: Path) -> None:
     output_path.write_text(buffer.getvalue().decode("utf-8"), encoding="utf-8")
 
 
-def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) -> str:
+def build_html(
+    url: str,
+    svg_filename: str,
+    ws_port: int,
+    session_token: str,
+    status_ws_url: str = "",
+    secondary_url: str = "",
+) -> str:
     host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
-    ws_url = f"ws://{host}:{ws_port}"
+    ws_url = status_ws_url or f"ws://{host}:{ws_port}"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    secondary_block = ""
+
+    if secondary_url:
+        secondary_block = f"""
+                <div class="item">
+                    <strong>局域网直连地址</strong>
+                    <div class="url-box secondary-url-box" id="secondaryUrlBox" role="button" tabindex="0" aria-label="点击复制局域网地址">
+                        <div class="url-head">
+                            <div class="url-label">备用地址</div>
+                            <button class="copy-pill" type="button" id="secondaryCopyButton">点击复制</button>
+                        </div>
+                        <div class="url-value">{html.escape(secondary_url)}</div>
+                    </div>
+                </div>
+"""
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -47,9 +69,7 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
             --accent: #cf7e29;
             --accent-soft: rgba(207, 126, 41, 0.12);
             --green: #258657;
-            --green-soft: rgba(37, 134, 87, 0.12);
             --red: #c44a45;
-            --red-soft: rgba(196, 74, 69, 0.1);
             --shadow-up: 18px 18px 34px rgba(173, 183, 196, 0.8), -18px -18px 34px rgba(255, 255, 255, 0.96);
             --shadow-inset: inset 8px 8px 14px rgba(176, 185, 197, 0.72), inset -8px -8px 14px rgba(255, 255, 255, 0.9);
         }}
@@ -179,6 +199,24 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
             color: var(--red);
         }}
 
+        .list {{
+            display: grid;
+            gap: 12px;
+        }}
+
+        .item {{
+            padding: 16px 18px;
+            border-radius: 18px;
+            background: var(--paper);
+            box-shadow: 10px 10px 20px rgba(176, 185, 197, 0.7), -10px -10px 20px rgba(255, 255, 255, 0.92);
+        }}
+
+        .item strong {{
+            display: block;
+            margin-bottom: 6px;
+            font-size: 15px;
+        }}
+
         .url-box {{
             margin-top: 18px;
             padding: 18px;
@@ -186,6 +224,10 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
             background: var(--paper);
             box-shadow: var(--shadow-inset);
             cursor: pointer;
+        }}
+
+        .secondary-url-box {{
+            margin-top: 12px;
         }}
 
         .url-head {{
@@ -220,24 +262,6 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
             line-height: 1.7;
             color: #18314f;
             font-weight: 700;
-        }}
-
-        .list {{
-            display: grid;
-            gap: 12px;
-        }}
-
-        .item {{
-            padding: 16px 18px;
-            border-radius: 18px;
-            background: var(--paper);
-            box-shadow: 10px 10px 20px rgba(176, 185, 197, 0.7), -10px -10px 20px rgba(255, 255, 255, 0.92);
-        }}
-
-        .item strong {{
-            display: block;
-            margin-bottom: 6px;
-            font-size: 15px;
         }}
 
         .meta {{
@@ -321,13 +345,13 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
                     <strong>手机打开地址</strong>
                     <div class="url-box" id="urlBox" role="button" tabindex="0" aria-label="点击复制手机地址">
                         <div class="url-head">
-                            <div class="url-label">手动地址</div>
+                            <div class="url-label">推荐地址</div>
                             <button class="copy-pill" type="button" id="copyButton">点击复制地址</button>
                         </div>
                         <div class="url-value">{html.escape(url)}</div>
                     </div>
                 </div>
-
+{secondary_block}
                 <div class="item">
                     <strong>先做这一件事</strong>
                     <span>在电脑上先把光标点到你真正要输入的位置。这个工具只负责把手机上的输入送过去，不会替你决定要输入到哪个框里。</span>
@@ -335,12 +359,12 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
 
                 <div class="item">
                     <strong>如果手机连上了但电脑没打字</strong>
-                    <span>回到绿色包根目录，双击“如果输入没反应-请用管理员启动.bat”。新版已经会把失败原因直接回传到这页和手机页。</span>
+                    <span>回到绿色包根目录，双击“如果输入没反应-请用管理员启动.bat”。输入失败原因也会回传到这里和手机页。</span>
                 </div>
 
                 <div class="item">
                     <strong>输入模式说明</strong>
-                    <span>手机页现在有“实时同步”和“整段同步”两种模式。输入法改写频繁时，改用整段同步会更稳。</span>
+                    <span>手机页有“实时同步”和“整段同步”两种模式。输入法改写频繁时，改用整段同步会更稳。</span>
                 </div>
             </div>
         </section>
@@ -350,10 +374,13 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
 
     <script>
         const manualUrl = {json.dumps(url, ensure_ascii=False)};
+        const secondaryUrl = {json.dumps(secondary_url, ensure_ascii=False)};
         const statusWsUrl = {json.dumps(ws_url, ensure_ascii=False)};
         const sessionToken = {json.dumps(session_token, ensure_ascii=False)};
         const urlBox = document.getElementById("urlBox");
         const copyButton = document.getElementById("copyButton");
+        const secondaryUrlBox = document.getElementById("secondaryUrlBox");
+        const secondaryCopyButton = document.getElementById("secondaryCopyButton");
         const toast = document.getElementById("toast");
         const connectionStatus = document.getElementById("connectionStatus");
         const statusNote = document.getElementById("statusNote");
@@ -383,20 +410,20 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
             return copied;
         }}
 
-        async function copyManualUrl() {{
+        async function copyText(text, successMessage, failureMessage) {{
             try {{
                 if (navigator.clipboard && window.isSecureContext) {{
-                    await navigator.clipboard.writeText(manualUrl);
-                    showToast("地址已复制，去手机浏览器打开就行。");
+                    await navigator.clipboard.writeText(text);
+                    showToast(successMessage);
                     return;
                 }}
             }} catch (error) {{
             }}
 
-            if (fallbackCopy(manualUrl)) {{
-                showToast("地址已复制，去手机浏览器打开就行。");
+            if (fallbackCopy(text)) {{
+                showToast(successMessage);
             }} else {{
-                showToast("复制失败，请手动长按地址。");
+                showToast(failureMessage);
             }}
         }}
 
@@ -441,7 +468,7 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
 
             setConnectedState(mobileReady);
             if (!mobileReady) {{
-                setStatusNote("扫码以后，电脑这里会自动显示已连接。", "normal");
+                setStatusNote("扫码以后，电脑这里会自动显示已连接。");
                 return;
             }}
 
@@ -485,20 +512,33 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
         }}
 
         urlBox.addEventListener("click", () => {{
-            copyManualUrl();
+            copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
         }});
 
         copyButton.addEventListener("click", (event) => {{
             event.stopPropagation();
-            copyManualUrl();
+            copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
         }});
 
         urlBox.addEventListener("keydown", (event) => {{
             if (event.key === "Enter" || event.key === " ") {{
                 event.preventDefault();
-                copyManualUrl();
+                copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
             }}
         }});
+
+        if (secondaryUrlBox) {{
+            secondaryUrlBox.addEventListener("click", () => {{
+                copyText(secondaryUrl, "局域网地址已复制。", "局域网地址复制失败。");
+            }});
+        }}
+
+        if (secondaryCopyButton) {{
+            secondaryCopyButton.addEventListener("click", (event) => {{
+                event.stopPropagation();
+                copyText(secondaryUrl, "局域网地址已复制。", "局域网地址复制失败。");
+            }});
+        }}
 
         connectPresence();
     </script>
@@ -507,15 +547,20 @@ def build_html(url: str, svg_filename: str, ws_port: int, session_token: str) ->
 """
 
 
-def main() -> int:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate QR assets for Voice Input Sync.")
     parser.add_argument("--url", required=True)
     parser.add_argument("--svg", required=True)
     parser.add_argument("--html", required=True)
     parser.add_argument("--ws-port", type=int, default=8765)
     parser.add_argument("--session-token", default="")
-    args = parser.parse_args()
+    parser.add_argument("--status-ws-url", default="")
+    parser.add_argument("--secondary-url", default="")
+    return parser.parse_args()
 
+
+def main() -> int:
+    args = parse_args()
     svg_path = Path(args.svg).expanduser().resolve()
     html_path = Path(args.html).expanduser().resolve()
 
@@ -524,7 +569,14 @@ def main() -> int:
 
     build_svg(args.url, svg_path)
     html_path.write_text(
-        build_html(args.url, svg_path.name, args.ws_port, args.session_token),
+        build_html(
+            args.url,
+            svg_path.name,
+            args.ws_port,
+            args.session_token,
+            status_ws_url=args.status_ws_url,
+            secondary_url=args.secondary_url,
+        ),
         encoding="utf-8",
     )
     return 0

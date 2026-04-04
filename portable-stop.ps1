@@ -179,10 +179,21 @@ function Get-LegacyProcesses {
     return @($targets.ToArray() | Group-Object { Get-ProcessIdValue -ProcessObject $_ } | ForEach-Object { $_.Group[0] })
 }
 
+function Get-TunnelProcesses {
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and (
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8000(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8765(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8001(\s|$)' -or
+            $_.CommandLine -match '(?i)localtunnel.*--port\s+8766(\s|$)'
+        )
+    })
+}
+
 try {
     Write-Log "=== portable-stop.ps1 started ==="
 
-    $processes = @(Get-ManagedProcesses) + @(Get-ManagedAuxiliaryProcesses) + @(Get-LegacyProcesses)
+    $processes = @(Get-ManagedProcesses) + @(Get-ManagedAuxiliaryProcesses) + @(Get-LegacyProcesses) + @(Get-TunnelProcesses)
     $processes = @($processes | Group-Object { Get-ProcessIdValue -ProcessObject $_ } | ForEach-Object { $_.Group[0] })
     $stopped = 0
 
