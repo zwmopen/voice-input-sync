@@ -105,6 +105,9 @@ try {
         Start-Sleep -Milliseconds 500
     }
 
+    Get-ChildItem -LiteralPath (Join-Path $installDir "_runtime") -Filter "VoiceInputSync*.exe" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+
     if (-not $contentRoot) {
         Expand-Archive -LiteralPath $zipPath -DestinationPath $tempExtractDir -Force
         $contentRoot = $tempExtractDir

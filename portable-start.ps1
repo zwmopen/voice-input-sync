@@ -41,14 +41,14 @@ New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 function Resolve-ManagedExecutablePath {
     param([string]$BaseName)
 
-    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
-    if (Test-Path $flatPath) {
-        return $flatPath
-    }
-
     $folderPath = Join-Path (Join-Path $BaseDir $BaseName) ($BaseName + ".exe")
     if (Test-Path $folderPath) {
         return $folderPath
+    }
+
+    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
+    if (Test-Path $flatPath) {
+        return $flatPath
     }
 
     return $flatPath
