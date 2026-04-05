@@ -2,6 +2,10 @@ param()
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+Add-Type -AssemblyName WindowsBase
+Add-Type -AssemblyName WindowsFormsIntegration
 
 $ErrorActionPreference = "Stop"
 [System.Windows.Forms.Application]::EnableVisualStyles()
@@ -17,7 +21,8 @@ $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $MutexName = "Local\VoiceInputSyncPortableTray"
 $TrayMutex = $null
 $OwnsTrayMutex = $false
-$script:AllowMenuClose = $false
+$script:AllowWindowClose = $false
+$script:PopupVisible = $false
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 
@@ -161,106 +166,77 @@ function Show-Balloon {
     }
 }
 
-function New-Color {
-    param([string]$Hex)
+function New-WpfBrush {
+    param([string]$Color)
 
-    return [System.Drawing.ColorTranslator]::FromHtml($Hex)
+    return [System.Windows.Media.BrushConverter]::new().ConvertFromString($Color)
 }
 
-function Set-RoundedRegion {
+function Set-ButtonPalette {
     param(
-        [System.Windows.Forms.Control]$Control,
-        [int]$Radius
+        [System.Windows.Controls.Button]$Button,
+        [string]$BaseColor,
+        [string]$HoverColor,
+        [string]$TextColor
     )
 
-    if (-not $Control -or $Control.Width -le 1 -or $Control.Height -le 1) {
-        return
+    $palette = [pscustomobject]@{
+        Base = New-WpfBrush $BaseColor
+        Hover = New-WpfBrush $HoverColor
+        Text = New-WpfBrush $TextColor
     }
 
-    $diameter = [Math]::Max(2, $Radius * 2)
-    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-    $rect = [System.Drawing.Rectangle]::new(
-        0,
-        0,
-        [Math]::Max(1, $Control.Width - 1),
-        [Math]::Max(1, $Control.Height - 1)
-    )
-
-    $path.AddArc($rect.X, $rect.Y, $diameter, $diameter, 180, 90)
-    $path.AddArc($rect.Right - $diameter, $rect.Y, $diameter, $diameter, 270, 90)
-    $path.AddArc($rect.Right - $diameter, $rect.Bottom - $diameter, $diameter, $diameter, 0, 90)
-    $path.AddArc($rect.X, $rect.Bottom - $diameter, $diameter, $diameter, 90, 90)
-    $path.CloseFigure()
-
-    if ($Control.Region) {
-        $Control.Region.Dispose()
-    }
-
-    $Control.Region = New-Object System.Drawing.Region($path)
-    $path.Dispose()
+    $Button.Tag = $palette
+    $Button.Background = $palette.Base
+    $Button.Foreground = $palette.Text
+    $Button.Add_MouseEnter({
+        $sender = [System.Windows.Controls.Button]$this
+        $sender.Background = $sender.Tag.Hover
+    })
+    $Button.Add_MouseLeave({
+        $sender = [System.Windows.Controls.Button]$this
+        $sender.Background = $sender.Tag.Base
+    })
 }
 
-function New-MenuButton {
+function Set-ButtonEnabledState {
     param(
-        [string]$Text,
-        [int]$Top,
-        [System.Drawing.Color]$BaseColor,
-        [System.Drawing.Color]$HoverColor,
-        [System.Drawing.Color]$ForeColor,
-        [float]$FontSize = 10.5
+        [System.Windows.Controls.Button]$Button,
+        [bool]$Enabled
     )
 
-    $button = New-Object System.Windows.Forms.Button
-    $button.Text = $Text
-    $button.Location = New-Object System.Drawing.Point(18, $Top)
-    $button.Size = New-Object System.Drawing.Size(248, 42)
-    $button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $button.FlatAppearance.BorderSize = 0
-    $button.BackColor = $BaseColor
-    $button.ForeColor = $ForeColor
-    $button.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", $FontSize, [System.Drawing.FontStyle]::Bold)
-    $button.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $button.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    $button.Padding = New-Object System.Windows.Forms.Padding(16, 0, 0, 0)
-    $button.UseVisualStyleBackColor = $false
-    $button.Tag = [pscustomobject]@{
-        BaseColor = $BaseColor
-        HoverColor = $HoverColor
-        ForeColor = $ForeColor
+    $Button.IsEnabled = $Enabled
+    if ($Enabled) {
+        $Button.Opacity = 1
+        $Button.Cursor = [System.Windows.Input.Cursors]::Hand
+        $Button.Foreground = $Button.Tag.Text
+        $Button.Background = $Button.Tag.Base
+    } else {
+        $Button.Opacity = 0.58
+        $Button.Cursor = [System.Windows.Input.Cursors]::Arrow
+        $Button.Foreground = New-WpfBrush "#8292A3"
+        $Button.Background = New-WpfBrush "#E3EAF2"
     }
-
-    $button.Add_MouseEnter({
-        $sender = [System.Windows.Forms.Button]$this
-        $sender.BackColor = $sender.Tag.HoverColor
-    })
-
-    $button.Add_MouseLeave({
-        $sender = [System.Windows.Forms.Button]$this
-        $sender.BackColor = $sender.Tag.BaseColor
-    })
-
-    $button.Add_SizeChanged({
-        Set-RoundedRegion -Control $this -Radius 14
-    })
-
-    return $button
 }
 
 function Resolve-MenuLocation {
-    param([System.Windows.Forms.Form]$Form)
+    param(
+        [double]$Width,
+        [double]$Height
+    )
 
     $cursor = [System.Windows.Forms.Cursor]::Position
     $screen = [System.Windows.Forms.Screen]::FromPoint($cursor)
     $workArea = $screen.WorkingArea
 
-    $x = $cursor.X - [Math]::Min(26, [int]($Form.Width / 6))
-    $y = $cursor.Y - [Math]::Min(24, [int]($Form.Height / 8))
+    $x = $cursor.X - [Math]::Min(18, [int]($Width / 7))
+    $y = $cursor.Y - [Math]::Min(18, [int]($Height / 9))
 
-    if (($x + $Form.Width) -gt $workArea.Right) {
-        $x = $workArea.Right - $Form.Width - 10
+    if (($x + $Width) -gt $workArea.Right) {
+        $x = $workArea.Right - $Width - 8
     }
-    if (($y + $Form.Height) -gt $workArea.Bottom) {
-        $y = $workArea.Bottom - $Form.Height - 10
+    if (($y + $Height) -gt $workArea.Bottom) {
+        $y = $workArea.Bottom - $Height - 8
     }
     if ($x -lt $workArea.Left + 8) {
         $x = $workArea.Left + 8
@@ -269,7 +245,7 @@ function Resolve-MenuLocation {
         $y = $workArea.Top + 8
     }
 
-    return New-Object System.Drawing.Point($x, $y)
+    return [System.Windows.Point]::new([double]$x, [double]$y)
 }
 
 if (-not (Enter-TrayMutex)) {
@@ -279,100 +255,152 @@ if (-not (Enter-TrayMutex)) {
 
 $titleText = Get-UiText 0x8BED,0x97F3,0x8F93,0x5165,0x540C,0x6B65
 $subtitleText = Get-UiText 0x5C40,0x57DF,0x7F51,0x4F18,0x5148,0xFF0C,0x4E92,0x8054,0x7F51,0x5907,0x7528
-$openQrLabel = Get-UiText 0x6253,0x5F00,0x626B,0x7801,0x754C,0x9762
-$openMobileLabel = Get-UiText 0x6253,0x5F00,0x624B,0x673A,0x9875,0x9762
-$copyLabel = Get-UiText 0x590D,0x5236,0x624B,0x673A,0x5730,0x5740
-$exitLabel = Get-UiText 0x9000,0x51FA,0x8BED,0x97F3,0x8F93,0x5165,0x540C,0x6B65
+$openQrLabel = Get-UiText 0x6253,0x5F00,0x626B,0x7801,0x9875
+$openMobileLabel = Get-UiText 0x6253,0x5F00,0x624B,0x673A,0x9875
+$copyLabel = Get-UiText 0x590D,0x5236,0x5730,0x5740
+$exitLabel = Get-UiText 0x9000,0x51FA,0x540C,0x6B65
 $qrOpenFailedText = Get-UiText 0x626B,0x7801,0x754C,0x9762,0x6682,0x65F6,0x8FD8,0x6CA1,0x51C6,0x5907,0x597D,0x3002
 $pendingText = Get-UiText 0x8FD8,0x6CA1,0x62FF,0x5230,0x624B,0x673A,0x5730,0x5740,0xFF0C,0x8BF7,0x7A0D,0x540E,0x518D,0x8BD5,0x3002
 $copiedText = Get-UiText 0x624B,0x673A,0x5730,0x5740,0x5DF2,0x7ECF,0x590D,0x5236,0x3002
 $copyFailedText = Get-UiText 0x590D,0x5236,0x5931,0x8D25,0xFF0C,0x8BF7,0x7A0D,0x540E,0x91CD,0x8BD5,0x3002
 $openFailedText = Get-UiText 0x624B,0x673A,0x9875,0x9762,0x6682,0x65F6,0x8FD8,0x6CA1,0x51C6,0x5907,0x597D,0x3002
-$readyText = Get-UiText 0x5DF2,0x7ECF,0x5728,0x540E,0x53F0,0x5F85,0x547D,0x3002,0x53CC,0x51FB,0x6258,0x76D8,0x56FE,0x6807,0x53EF,0x4EE5,0x91CD,0x65B0,0x6253,0x5F00,0x626B,0x7801,0x9875,0x3002
-$headerHintText = Get-UiText 0x6258,0x76D8,0x5FEB,0x6377,0x64CD,0x4F5C
-
-$menuBackColor = New-Color "#EDF2F7"
-$cardColor = New-Color "#E7ECF2"
-$accentColor = New-Color "#D07F2A"
-$accentSoftColor = New-Color "#F2E7D9"
-$neutralSoftColor = New-Color "#F6F9FC"
-$greenSoftColor = New-Color "#E7F3EC"
-$dangerSoftColor = New-Color "#F6E7E7"
-$textColor = New-Color "#2B3B4F"
-$mutedColor = New-Color "#748396"
-$dangerColor = New-Color "#B9514D"
-$separatorColor = New-Color "#D8E0E9"
+$readyText = Get-UiText 0x5DF2,0x7ECF,0x5728,0x540E,0x53F0,0x5F85,0x547D,0x3002,0x53CC,0x51FB,0x6258,0x76D8,0x56FE,0x6807,0x53EF,0x4EE5,0x6253,0x5F00,0x626B,0x7801,0x9875,0x3002
 
 $notifyIcon = $null
-$menuForm = $null
+$popupWindow = $null
 $context = $null
 
 try {
     $context = New-Object System.Windows.Forms.ApplicationContext
 
-    $menuForm = New-Object System.Windows.Forms.Form
-    $menuForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $menuForm.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $menuForm.ShowInTaskbar = $false
-    $menuForm.TopMost = $true
-    $menuForm.BackColor = $menuBackColor
-    $menuForm.ClientSize = New-Object System.Drawing.Size(286, 282)
-    $menuForm.KeyPreview = $true
+    [xml]$xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="226"
+        Height="228"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="True"
+        Background="Transparent"
+        AllowsTransparency="True"
+        Topmost="True"
+        WindowStartupLocation="Manual">
+  <Window.Resources>
+    <Style x:Key="MenuButtonStyle" TargetType="Button">
+      <Setter Property="Margin" Value="0,0,0,10"/>
+      <Setter Property="Height" Value="36"/>
+      <Setter Property="Padding" Value="13,0,0,0"/>
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI"/>
+      <Setter Property="FontSize" Value="11.8"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid>
+              <Border x:Name="OuterShadow"
+                      Background="{TemplateBinding Background}"
+                      CornerRadius="16">
+                <Border.Effect>
+                  <DropShadowEffect BlurRadius="12"
+                                    ShadowDepth="4"
+                                    Direction="270"
+                                    Opacity="0.16"
+                                    Color="#97A6B4"/>
+                </Border.Effect>
+              </Border>
+              <Border CornerRadius="16"
+                      BorderBrush="#F8FBFF"
+                      BorderThickness="1"
+                      Margin="0.5,0.5,0,0"
+                      Opacity="0.9"/>
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+  <Border Background="#EDF3F8"
+          BorderBrush="#F7FAFD"
+          BorderThickness="1"
+          CornerRadius="24"
+          Padding="15"
+          SnapsToDevicePixels="True">
+    <Border.Effect>
+      <DropShadowEffect BlurRadius="22"
+                        ShadowDepth="0"
+                        Opacity="0.22"
+                        Color="#7E8FA2"/>
+    </Border.Effect>
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <StackPanel Grid.Row="0">
+        <Border Width="66"
+                Height="4"
+                Background="#D07F2A"
+                CornerRadius="4"
+                HorizontalAlignment="Left"
+                Margin="0,0,0,10"/>
+        <TextBlock x:Name="TitleText"
+                   FontFamily="Microsoft YaHei UI"
+                   FontSize="14.4"
+                   FontWeight="Bold"
+                   Foreground="#22364C"/>
+        <TextBlock x:Name="SubtitleText"
+                   Margin="0,4,0,0"
+                   FontFamily="Microsoft YaHei UI"
+                   FontSize="10.2"
+                   Foreground="#728194"/>
+      </StackPanel>
+      <StackPanel Grid.Row="1" Margin="0,12,0,0">
+        <Button x:Name="QrButton" Style="{StaticResource MenuButtonStyle}"/>
+        <Button x:Name="MobileButton" Style="{StaticResource MenuButtonStyle}"/>
+        <Button x:Name="CopyButton" Style="{StaticResource MenuButtonStyle}" Margin="0,0,0,8"/>
+      </StackPanel>
+      <StackPanel Grid.Row="2" Margin="0,2,0,0">
+        <Border Height="1"
+                Background="#D9E1EA"
+                Margin="2,0,2,10"/>
+        <Button x:Name="ExitButton" Style="{StaticResource MenuButtonStyle}" Margin="0,0,0,0"/>
+      </StackPanel>
+    </Grid>
+  </Border>
+</Window>
+"@
 
-    $card = New-Object System.Windows.Forms.Panel
-    $card.Location = New-Object System.Drawing.Point(0, 0)
-    $card.Size = $menuForm.ClientSize
-    $card.BackColor = $cardColor
-    $card.Padding = New-Object System.Windows.Forms.Padding(0)
-    $menuForm.Controls.Add($card)
+    $reader = New-Object System.Xml.XmlNodeReader $xaml
+    $popupWindow = [System.Windows.Markup.XamlReader]::Load($reader)
+    [System.Windows.Forms.Integration.ElementHost]::EnableModelessKeyboardInterop($popupWindow)
 
-    $accentBar = New-Object System.Windows.Forms.Panel
-    $accentBar.Location = New-Object System.Drawing.Point(18, 14)
-    $accentBar.Size = New-Object System.Drawing.Size(76, 5)
-    $accentBar.BackColor = $accentColor
-    $card.Controls.Add($accentBar)
+    $titleLabel = [System.Windows.Controls.TextBlock]$popupWindow.FindName("TitleText")
+    $subtitleLabel = [System.Windows.Controls.TextBlock]$popupWindow.FindName("SubtitleText")
+    $openQrButton = [System.Windows.Controls.Button]$popupWindow.FindName("QrButton")
+    $openMobileButton = [System.Windows.Controls.Button]$popupWindow.FindName("MobileButton")
+    $copyButton = [System.Windows.Controls.Button]$popupWindow.FindName("CopyButton")
+    $exitButton = [System.Windows.Controls.Button]$popupWindow.FindName("ExitButton")
 
-    $titleLabel = New-Object System.Windows.Forms.Label
     $titleLabel.Text = $titleText
-    $titleLabel.Location = New-Object System.Drawing.Point(18, 28)
-    $titleLabel.Size = New-Object System.Drawing.Size(200, 28)
-    $titleLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 12.5, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.ForeColor = $textColor
-    $card.Controls.Add($titleLabel)
-
-    $subtitleLabel = New-Object System.Windows.Forms.Label
     $subtitleLabel.Text = $subtitleText
-    $subtitleLabel.Location = New-Object System.Drawing.Point(18, 56)
-    $subtitleLabel.Size = New-Object System.Drawing.Size(210, 18)
-    $subtitleLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 8.9, [System.Drawing.FontStyle]::Regular)
-    $subtitleLabel.ForeColor = $mutedColor
-    $card.Controls.Add($subtitleLabel)
+    $openQrButton.Content = $openQrLabel
+    $openMobileButton.Content = $openMobileLabel
+    $copyButton.Content = $copyLabel
+    $exitButton.Content = $exitLabel
 
-    $hintLabel = New-Object System.Windows.Forms.Label
-    $hintLabel.Text = $headerHintText
-    $hintLabel.Location = New-Object System.Drawing.Point(18, 82)
-    $hintLabel.Size = New-Object System.Drawing.Size(120, 18)
-    $hintLabel.Font = New-Object System.Drawing.Font("Microsoft YaHei UI", 8.6, [System.Drawing.FontStyle]::Bold)
-    $hintLabel.ForeColor = $accentColor
-    $card.Controls.Add($hintLabel)
-
-    $openQrButton = New-MenuButton -Text $openQrLabel -Top 108 -BaseColor $accentSoftColor -HoverColor (New-Color "#EBCFAD") -ForeColor $accentColor
-    $openMobileButton = New-MenuButton -Text $openMobileLabel -Top 156 -BaseColor $greenSoftColor -HoverColor (New-Color "#D8ECDD") -ForeColor (New-Color "#2C7A58")
-    $copyButton = New-MenuButton -Text $copyLabel -Top 204 -BaseColor $neutralSoftColor -HoverColor (New-Color "#E7EEF6") -ForeColor $textColor
-
-    $separator = New-Object System.Windows.Forms.Panel
-    $separator.Location = New-Object System.Drawing.Point(18, 252)
-    $separator.Size = New-Object System.Drawing.Size(248, 1)
-    $separator.BackColor = $separatorColor
-
-    $exitButton = New-MenuButton -Text $exitLabel -Top 262 -BaseColor $dangerSoftColor -HoverColor (New-Color "#ECD6D6") -ForeColor $dangerColor
-    $exitButton.Size = New-Object System.Drawing.Size(248, 42)
-    $menuForm.ClientSize = New-Object System.Drawing.Size(286, 322)
-    $card.Size = $menuForm.ClientSize
-
-    foreach ($control in @($openQrButton, $openMobileButton, $copyButton, $separator, $exitButton)) {
-        $card.Controls.Add($control)
-    }
+    Set-ButtonPalette -Button $openQrButton -BaseColor "#F5E7D1" -HoverColor "#ECD4B0" -TextColor "#C87720"
+    Set-ButtonPalette -Button $openMobileButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $copyButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $exitButton -BaseColor "#F6E7E6" -HoverColor "#EFD8D6" -TextColor "#C55A51"
 
     $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
     if (Test-Path $IconPath) {
@@ -385,33 +413,29 @@ try {
     $notifyIcon.Visible = $true
 
     function Hide-CustomMenu {
-        if ($menuForm -and $menuForm.Visible) {
-            $menuForm.Hide()
+        if ($popupWindow -and $script:PopupVisible) {
+            $script:PopupVisible = $false
+            $popupWindow.Hide()
         }
     }
 
     function Update-MenuAvailability {
         $preferredUrl = Get-PreferredMobileUrl
         $hasUrl = -not [string]::IsNullOrWhiteSpace($preferredUrl)
-
-        foreach ($button in @($openMobileButton, $copyButton)) {
-            if ($hasUrl) {
-                $button.Enabled = $true
-                $button.ForeColor = $button.Tag.ForeColor
-                $button.BackColor = $button.Tag.BaseColor
-            } else {
-                $button.Enabled = $false
-                $button.ForeColor = $mutedColor
-                $button.BackColor = New-Color "#E4EAF1"
-            }
-        }
+        Set-ButtonEnabledState -Button $openMobileButton -Enabled $hasUrl
+        Set-ButtonEnabledState -Button $copyButton -Enabled $hasUrl
     }
 
     function Show-CustomMenu {
         Update-MenuAvailability
-        $menuForm.Location = Resolve-MenuLocation -Form $menuForm
-        $menuForm.Show()
-        $menuForm.Activate()
+        $location = Resolve-MenuLocation -Width $popupWindow.Width -Height $popupWindow.Height
+        $popupWindow.Left = $location.X
+        $popupWindow.Top = $location.Y
+        $script:PopupVisible = $true
+        if (-not $popupWindow.IsVisible) {
+            $popupWindow.Show()
+        }
+        $popupWindow.Activate() | Out-Null
         Write-Log "Tray menu opened."
     }
 
@@ -456,9 +480,9 @@ try {
         } catch {
             Write-Log ("Stop script failed: " + $_.Exception.Message)
         } finally {
-            $script:AllowMenuClose = $true
-            if ($menuForm) {
-                $menuForm.Close()
+            $script:AllowWindowClose = $true
+            if ($popupWindow) {
+                $popupWindow.Close()
             }
             $context.ExitThread()
         }
@@ -473,7 +497,7 @@ try {
         param($sender, $e)
 
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
-            if ($menuForm.Visible) {
+            if ($script:PopupVisible) {
                 Hide-CustomMenu
             } else {
                 Show-CustomMenu
@@ -483,50 +507,44 @@ try {
 
     $notifyIcon.Add_DoubleClick($openQrAction)
 
-    $menuForm.Add_Deactivate({
+    $popupWindow.Add_Deactivated({
         Hide-CustomMenu
     })
 
-    $menuForm.Add_KeyDown({
+    $popupWindow.Add_PreviewKeyDown({
         param($sender, $e)
 
-        if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+        if ($e.Key -eq [System.Windows.Input.Key]::Escape) {
             Hide-CustomMenu
         }
     })
 
-    $menuForm.Add_FormClosing({
+    $popupWindow.Add_Closing({
         param($sender, $e)
 
-        if (-not $script:AllowMenuClose) {
+        if (-not $script:AllowWindowClose) {
             $e.Cancel = $true
             Hide-CustomMenu
         }
     })
 
-    $menuForm.Add_SizeChanged({
-        Set-RoundedRegion -Control $menuForm -Radius 24
-        Set-RoundedRegion -Control $card -Radius 22
-    })
-
-    Set-RoundedRegion -Control $menuForm -Radius 24
-    Set-RoundedRegion -Control $card -Radius 22
-    foreach ($button in @($openQrButton, $openMobileButton, $copyButton, $exitButton)) {
-        Set-RoundedRegion -Control $button -Radius 14
-    }
-
     Show-Balloon -NotifyIcon $notifyIcon -Title $titleText -Text $readyText -Icon ([System.Windows.Forms.ToolTipIcon]::Info)
     Write-Log "Tray started."
     [System.Windows.Forms.Application]::Run($context)
+} catch {
+    Write-Log ("Tray fatal error: " + $_.Exception.ToString())
+    throw
 } finally {
-    if ($menuForm) {
-        $script:AllowMenuClose = $true
-        $menuForm.Dispose()
-    }
     if ($notifyIcon) {
         $notifyIcon.Visible = $false
         $notifyIcon.Dispose()
     }
+    if ($popupWindow) {
+        try {
+            $script:AllowWindowClose = $true
+            $popupWindow.Close()
+        } catch {
+        }
+    }
     Exit-TrayMutex
-    Write-Log "Tray exited."
 }
