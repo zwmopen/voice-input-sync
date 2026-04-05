@@ -456,17 +456,26 @@ try {
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Row="0"
-                        Grid.ColumnSpan="3"
-                        Height="6"
-                        Margin="18,0,18,18"
-                        Background="#E3C6A3"
-                        CornerRadius="6">
-                    <Border Width="172"
-                            HorizontalAlignment="Left"
+                <StackPanel Grid.Row="0"
+                            Grid.ColumnSpan="3"
+                            Margin="10,0,0,18"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Border Width="64"
+                            Height="8"
+                            Margin="0,0,10,0"
                             Background="#D07F2A"
-                            CornerRadius="6"/>
-                </Border>
+                            CornerRadius="8"/>
+                    <Border Width="14"
+                            Height="8"
+                            Margin="0,0,8,0"
+                            Background="#E6C39A"
+                            CornerRadius="8"/>
+                    <Border Width="14"
+                            Height="8"
+                            Background="#D9E3ED"
+                            CornerRadius="8"/>
+                </StackPanel>
 
                 <Border Grid.Row="1"
                         Grid.Column="0"

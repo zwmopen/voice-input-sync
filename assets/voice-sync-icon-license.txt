@@ -1,0 +1,9 @@
+Voice Input Sync icon attribution
+
+Source: https://icon-icons.com/zh/icon/song-mic-microphone-sound-voice-google/228397
+Author: Nezhadeh Studio
+Pack: OneUI
+License: CC BY 4.0
+Downloaded: 2026-04-05
+
+This file is kept so packaged builds retain the attribution for the app icon.

@@ -130,6 +130,8 @@ Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "使用手册.md") $runtimeRoot -Force -ErrorAction SilentlyContinue
 Set-Content -Path (Join-Path $runtimeRoot "build-info.json") -Value $buildInfoJson -Encoding UTF8
 Copy-Item (Join-Path $projectRoot "assets") $runtimeRoot -Recurse -Force
+Remove-Item (Join-Path $runtimeRoot "assets\icon-options") -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $runtimeRoot "assets\voice-sync-icon-source.png") -Force -ErrorAction SilentlyContinue
 
 Copy-Item (Join-Path $projectRoot "share-quick-start.txt") (Join-Path $packageRoot "先看这里.txt") -Force
 Copy-Item (Join-Path $projectRoot "share-user-guide.html") (Join-Path $packageRoot "用户手册.html") -Force
