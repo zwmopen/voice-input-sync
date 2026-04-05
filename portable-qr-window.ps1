@@ -662,6 +662,31 @@ function Set-StatusUi {
                 </Grid>
             </Grid>
         </Border>
+
+        <Border x:Name="CopyToast"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,24"
+                Padding="18,12"
+                Background="#EAF1F8"
+                BorderBrush="#F8FBFF"
+                BorderThickness="1"
+                CornerRadius="999"
+                Visibility="Collapsed"
+                Opacity="0.96">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18"
+                                  ShadowDepth="6"
+                                  Direction="270"
+                                  Opacity="0.18"
+                                  Color="#9FB0C1"/>
+            </Border.Effect>
+            <TextBlock x:Name="CopyToastText"
+                       Text="已复制"
+                       FontSize="14"
+                       FontWeight="Bold"
+                       Foreground="#244A73"/>
+        </Border>
     </Grid>
 </Window>
 "@
@@ -688,6 +713,8 @@ $lanAddress = $window.FindName("LanAddress")
 $lanImage = $window.FindName("LanImage")
 $lanPlaceholder = $window.FindName("LanPlaceholder")
 $lanCopyButton = $window.FindName("LanCopyButton")
+$copyToast = $window.FindName("CopyToast")
+$copyToastText = $window.FindName("CopyToastText")
 $onlineCard = $window.FindName("OnlineCard")
 $onlineBadgeText = $window.FindName("OnlineBadgeText")
 $onlineTitle = $window.FindName("OnlineTitle")
@@ -697,10 +724,27 @@ $onlineImage = $window.FindName("OnlineImage")
 $onlinePlaceholder = $window.FindName("OnlinePlaceholder")
 $onlineCopyButton = $window.FindName("OnlineCopyButton")
 
+$copyToastTimer = New-Object System.Windows.Threading.DispatcherTimer
+$copyToastTimer.Interval = [TimeSpan]::FromSeconds(1.4)
+$copyToastTimer.Add_Tick({
+    $copyToastTimer.Stop()
+    $copyToast.Visibility = "Collapsed"
+})
+
+function Show-CopyToast {
+    param([string]$Message)
+
+    $copyToastText.Text = $Message
+    $copyToast.Visibility = "Visible"
+    $copyToastTimer.Stop()
+    $copyToastTimer.Start()
+}
+
 $lanCopyButton.Add_Click({
     if (-not [string]::IsNullOrWhiteSpace($lanAddress.Text) -and $lanCopyButton.IsEnabled) {
         [System.Windows.Clipboard]::SetText($lanAddress.Text)
         $script:StatusHintText.Text = "局域网地址已复制，可以直接发到手机。"
+        Show-CopyToast "已复制局域网地址"
     }
 })
 
@@ -708,6 +752,7 @@ $onlineCopyButton.Add_Click({
     if (-not [string]::IsNullOrWhiteSpace($onlineAddress.Text) -and $onlineCopyButton.IsEnabled) {
         [System.Windows.Clipboard]::SetText($onlineAddress.Text)
         $script:StatusHintText.Text = "互联网地址已复制，可以直接发到手机。"
+        Show-CopyToast "已复制互联网地址"
     }
 })
 
@@ -773,6 +818,7 @@ $window.Add_ContentRendered({
 
 $window.Add_Closed({
     $refreshTimer.Stop()
+    $copyToastTimer.Stop()
 })
 
 [void]$window.ShowDialog()
