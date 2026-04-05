@@ -38,6 +38,9 @@ $productName = "语音输入同步-绿色版"
 $packageRoot = Join-Path $releaseRoot $productName
 $runtimeRoot = Join-Path $packageRoot "_runtime"
 $zipPath = Join-Path $releaseRoot ($productName + ".zip")
+$zipAliasPath = Join-Path $releaseRoot "VoiceInputSync-Portable.zip"
+$setupAliasPath = Join-Path $releaseRoot "VoiceInputSync-Setup.exe"
+$setupLocalizedPath = Join-Path $releaseRoot "语音输入同步-安装版.exe"
 $iconScript = Join-Path $projectRoot "generate_app_icon.py"
 $iconPath = Join-Path $projectRoot "assets\voice-sync-icon.ico"
 $versionInfoPath = Join-Path $projectRoot "pyinstaller-version.txt"
@@ -89,12 +92,12 @@ Invoke-Step -FilePath $venvPython -Arguments @($iconScript)
 Remove-Item $pyiRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $packageRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+Remove-Item $zipAliasPath -Force -ErrorAction SilentlyContinue
+Remove-Item $setupAliasPath -Force -ErrorAction SilentlyContinue
+Remove-Item $setupLocalizedPath -Force -ErrorAction SilentlyContinue
 
 $buildTargets = @(
-    @{ Name = "VoiceInputSyncHttp"; Script = "portable_http_server.py" },
-    @{ Name = "VoiceInputSyncWs"; Script = "server.py" },
-    @{ Name = "VoiceInputSyncClient"; Script = "client.py" },
-    @{ Name = "VoiceInputSyncQr"; Script = "generate_qr_bundle.py" }
+    @{ Name = "VoiceInputSyncRuntime"; Script = "portable_runtime.py" }
 )
 
 foreach ($target in $buildTargets) {
@@ -133,6 +136,9 @@ Copy-Item (Join-Path $projectRoot "favicon.svg") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "site.webmanifest") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable_http_server.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "server.py") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "client.py") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "generate_qr_bundle.py") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable_runtime.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-qr-window.ps1") $runtimeRoot -Force

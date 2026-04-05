@@ -194,7 +194,7 @@ function Set-CardUi {
         $softColor = "#EAF1F8"
         $textColor = "#244A73"
     } else {
-        $softColor = "#F5E7D1"
+        $softColor = "#F4E5CF"
         $textColor = "#C87720"
     }
 
@@ -204,10 +204,10 @@ function Set-CardUi {
     $BadgeText.Foreground = New-Brush $textColor
     $BadgeText.Parent.Background = New-Brush $softColor
 
-    $Card.BorderBrush = if ($Featured) { New-Brush "#E5C89C" } else { New-Brush "#D8E0E9" }
-    $Card.Background = if ($Featured) { New-Brush "#F7FAFD" } else { New-Brush "#F2F6FA" }
-    $CopyButton.Background = New-Brush "#F5E7D1"
-    $CopyButton.Foreground = New-Brush "#C87720"
+    $Card.BorderBrush = New-Brush "#D5E0EC"
+    $Card.Background = if ($Featured) { New-Brush "#EEF4FA" } else { New-Brush "#EEF3F9" }
+    $CopyButton.Background = if ($Featured) { New-Brush "#F4E5CF" } else { New-Brush "#EAF1F8" }
+    $CopyButton.Foreground = if ($Featured) { New-Brush "#C87720" } else { New-Brush "#244A73" }
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
         $AddressText.Text = "当前还没有可用地址"
@@ -266,10 +266,12 @@ function Set-StatusUi {
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         ResizeMode="NoResize"
-        Background="#EEF3F8"
+        Background="Transparent"
+        AllowsTransparency="True"
         ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI"
-        SnapsToDevicePixels="True">
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
     <Window.Resources>
         <Style x:Key="TitleButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="38"/>
@@ -285,12 +287,12 @@ function Set-StatusUi {
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="14">
+                                CornerRadius="10">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="10"
-                                                  ShadowDepth="4"
+                                <DropShadowEffect BlurRadius="8"
+                                                  ShadowDepth="3"
                                                   Direction="270"
-                                                  Opacity="0.12"
+                                                  Opacity="0.14"
                                                   Color="#9FB1C4"/>
                             </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center"
@@ -303,9 +305,9 @@ function Set-StatusUi {
         <Style x:Key="GuideCardStyle" TargetType="Border">
             <Setter Property="Padding" Value="14,11"/>
             <Setter Property="Margin" Value="0,0,14,0"/>
-            <Setter Property="CornerRadius" Value="18"/>
-            <Setter Property="Background" Value="#F6F9FC"/>
-            <Setter Property="BorderBrush" Value="#DCE4ED"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Background" Value="#EDF3F9"/>
+            <Setter Property="BorderBrush" Value="#D7E2EE"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
         <Style x:Key="CopyButtonStyle" TargetType="Button">
@@ -321,12 +323,12 @@ function Set-StatusUi {
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="18">
+                                CornerRadius="12">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="14"
-                                                  ShadowDepth="5"
+                                <DropShadowEffect BlurRadius="10"
+                                                  ShadowDepth="3"
                                                   Direction="270"
-                                                  Opacity="0.18"
+                                                  Opacity="0.16"
                                                   Color="#A5B2BF"/>
                             </Border.Effect>
                             <ContentPresenter Margin="{TemplateBinding Padding}"
@@ -338,37 +340,22 @@ function Set-StatusUi {
             </Setter>
         </Style>
     </Window.Resources>
-    <Grid>
-        <Grid.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#EEF3F8" Offset="0"/>
-                <GradientStop Color="#DEE6EE" Offset="1"/>
-            </LinearGradientBrush>
-        </Grid.Background>
-
-        <Ellipse Width="280"
-                 Height="280"
-                 Margin="-60,-110,0,0"
-                 HorizontalAlignment="Left"
-                 VerticalAlignment="Top"
-                 Fill="#18AFC2D5"/>
-        <Ellipse Width="240"
-                 Height="240"
-                 Margin="0,-70,-40,0"
-                 HorizontalAlignment="Right"
-                 VerticalAlignment="Top"
-                 Fill="#1499ADC6"/>
-
-        <Border Margin="16"
-                CornerRadius="34"
-                Background="#E8EEF4"
+    <Grid Background="Transparent">
+        <Border Margin="12"
+                CornerRadius="14"
                 BorderBrush="#F7FAFD"
                 BorderThickness="1">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="#EAF1F8" Offset="0"/>
+                    <GradientStop Color="#DCE5F0" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
             <Border.Effect>
-                <DropShadowEffect BlurRadius="34" ShadowDepth="16" Direction="315" Color="#99A8B8" Opacity="0.32"/>
+                <DropShadowEffect BlurRadius="20" ShadowDepth="6" Direction="315" Color="#99A8B8" Opacity="0.2"/>
             </Border.Effect>
 
-            <Grid Margin="20">
+            <Grid Margin="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="14"/>
@@ -376,9 +363,10 @@ function Set-StatusUi {
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <Border Grid.Row="0"
-                        CornerRadius="24"
-                        Background="#F3F7FB"
+                <Border x:Name="HeaderShell"
+                        Grid.Row="0"
+                        CornerRadius="12"
+                        Background="#EEF4FA"
                         BorderBrush="#F9FBFE"
                         BorderThickness="1"
                         Padding="14,10">
@@ -391,13 +379,13 @@ function Set-StatusUi {
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border Width="40"
                                 Height="40"
-                                CornerRadius="14"
-                                Background="#F4F8FC">
+                                CornerRadius="10"
+                                Background="#EFF4FA">
                             <Border.Effect>
-                                <DropShadowEffect BlurRadius="10"
-                                                  ShadowDepth="4"
+                                <DropShadowEffect BlurRadius="8"
+                                                  ShadowDepth="3"
                                                   Direction="270"
-                                                  Opacity="0.12"
+                                                  Opacity="0.13"
                                                   Color="#A5B4C2"/>
                             </Border.Effect>
                             <Image x:Name="HeaderIcon"
@@ -426,25 +414,26 @@ function Set-StatusUi {
                         <Button x:Name="CloseWindowButton"
                                 Margin="10,0,0,0"
                                 Style="{StaticResource TitleButtonStyle}"
-                                Background="#F5E7D1"
+                                Background="#F4E5CF"
                                 Foreground="#C87720"
                                 Content="&#xE8BB;"/>
                     </StackPanel>
                     </Grid>
                 </Border>
 
-                <Border Grid.Row="2"
-                        CornerRadius="28"
-                        Background="#F4F8FC"
+                <Border x:Name="GuideShell"
+                        Grid.Row="2"
+                        CornerRadius="12"
+                        Background="#EEF4FA"
                         BorderBrush="#F8FBFF"
                         BorderThickness="1"
                         Padding="24,20">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="20"
-                                          ShadowDepth="8"
+                        <DropShadowEffect BlurRadius="12"
+                                          ShadowDepth="4"
                                           Direction="270"
                                           Color="#B1BFCC"
-                                          Opacity="0.16"/>
+                                          Opacity="0.11"/>
                     </Border.Effect>
                     <Grid>
                         <Grid.RowDefinitions>
@@ -460,7 +449,7 @@ function Set-StatusUi {
                             <Border HorizontalAlignment="Left"
                                     Padding="12,6"
                                     CornerRadius="999"
-                                    Background="#F5E7D1">
+                                    Background="#F4E5CF">
                                 <TextBlock Text="语音输入同步 · 手机扫码连接"
                                            FontSize="13"
                                            FontWeight="Bold"
@@ -475,7 +464,7 @@ function Set-StatusUi {
                             <TextBlock Text="上面先试局域网直连，下面保留互联网备用。连上后回电脑点中真正要输入的位置。"
                                        Margin="0,10,0,0"
                                        FontSize="15"
-                                       Foreground="#667687"
+                                       Foreground="#6B7D92"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
 
@@ -518,20 +507,20 @@ function Set-StatusUi {
                                 <TextBlock Text="1 先扫局域网"
                                            FontSize="14"
                                            FontWeight="SemiBold"
-                                           Foreground="#274160"/>
+                                           Foreground="#2E4A68"/>
                             </Border>
                             <Border Style="{StaticResource GuideCardStyle}">
                                 <TextBlock Text="2 等这里变已连接"
                                            FontSize="14"
                                            FontWeight="SemiBold"
-                                           Foreground="#274160"/>
+                                           Foreground="#2E4A68"/>
                             </Border>
                             <Border Margin="0"
                                     Style="{StaticResource GuideCardStyle}">
                                 <TextBlock Text="3 回电脑点输入框"
                                            FontSize="14"
                                            FontWeight="SemiBold"
-                                           Foreground="#274160"/>
+                                           Foreground="#2E4A68"/>
                             </Border>
                         </UniformGrid>
                     </Grid>
@@ -547,15 +536,15 @@ function Set-StatusUi {
                     <Border x:Name="LanCard"
                             Grid.Column="0"
                             Padding="22"
-                            CornerRadius="28"
-                            Background="#F4F8FC"
-                            BorderBrush="#E5C89C"
+                            CornerRadius="14"
+                            Background="#EEF4FA"
+                            BorderBrush="#D5E0EC"
                             BorderThickness="1">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="18"
-                                              ShadowDepth="8"
+                            <DropShadowEffect BlurRadius="10"
+                                              ShadowDepth="3"
                                               Direction="270"
-                                              Opacity="0.18"
+                                              Opacity="0.12"
                                               Color="#A5B2BF"/>
                         </Border.Effect>
                         <Grid>
@@ -567,7 +556,7 @@ function Set-StatusUi {
 
                             <StackPanel Grid.Column="0">
                             <Border Background="#F5E7D1"
-                                    CornerRadius="14"
+                                    CornerRadius="10"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
                                 <TextBlock x:Name="LanBadgeText"
@@ -578,18 +567,18 @@ function Set-StatusUi {
                             </Border>
 
                             <Border
-                                    Margin="0,16,0,0"
-                                    Padding="16"
-                                    Height="216"
-                                    CornerRadius="24"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#F7FAFD"
-                                    BorderThickness="1">
+                                     Margin="0,16,0,0"
+                                     Padding="16"
+                                     Height="216"
+                                     CornerRadius="14"
+                                     Background="#FFFFFF"
+                                     BorderBrush="#F7FAFD"
+                                     BorderThickness="1">
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="18"
-                                                      ShadowDepth="8"
+                                    <DropShadowEffect BlurRadius="10"
+                                                      ShadowDepth="3"
                                                       Direction="270"
-                                                      Opacity="0.18"
+                                                      Opacity="0.12"
                                                       Color="#B4C1CD"/>
                                 </Border.Effect>
                                 <Grid>
@@ -621,15 +610,15 @@ function Set-StatusUi {
                                            TextWrapping="Wrap"/>
                                 <Border Margin="0,16,0,0"
                                         Padding="16,14"
-                                        CornerRadius="20"
+                                        CornerRadius="12"
                                         Background="#FFFFFF"
                                         BorderBrush="#F4F7FB"
                                         BorderThickness="1">
                                     <Border.Effect>
-                                        <DropShadowEffect BlurRadius="14"
-                                                          ShadowDepth="6"
+                                        <DropShadowEffect BlurRadius="9"
+                                                          ShadowDepth="3"
                                                           Direction="270"
-                                                          Opacity="0.14"
+                                                          Opacity="0.10"
                                                           Color="#BAC6D2"/>
                                     </Border.Effect>
                                     <TextBlock x:Name="LanAddress"
@@ -640,7 +629,7 @@ function Set-StatusUi {
                                 <Button x:Name="LanCopyButton"
                                         Content="复制局域网地址"
                                         Style="{StaticResource CopyButtonStyle}"
-                                        Background="#F5E7D1"
+                                        Background="#F4E5CF"
                                         Foreground="#C87720"/>
                             </StackPanel>
                         </Grid>
@@ -649,15 +638,15 @@ function Set-StatusUi {
                     <Border x:Name="OnlineCard"
                             Grid.Column="2"
                             Padding="22"
-                            CornerRadius="28"
-                            Background="#F4F8FC"
-                            BorderBrush="#D8E0E9"
+                            CornerRadius="14"
+                            Background="#EEF4FA"
+                            BorderBrush="#D5E0EC"
                             BorderThickness="1">
                         <Border.Effect>
-                            <DropShadowEffect BlurRadius="18"
-                                              ShadowDepth="8"
+                            <DropShadowEffect BlurRadius="10"
+                                              ShadowDepth="3"
                                               Direction="270"
-                                              Opacity="0.18"
+                                              Opacity="0.12"
                                               Color="#A5B2BF"/>
                         </Border.Effect>
                         <Grid>
@@ -669,7 +658,7 @@ function Set-StatusUi {
 
                             <StackPanel Grid.Column="0">
                             <Border Background="#EAF1F8"
-                                    CornerRadius="14"
+                                    CornerRadius="10"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
                                 <TextBlock x:Name="OnlineBadgeText"
@@ -680,18 +669,18 @@ function Set-StatusUi {
                             </Border>
 
                             <Border
-                                    Margin="0,16,0,0"
-                                    Padding="16"
-                                    Height="216"
-                                    CornerRadius="24"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#F7FAFD"
-                                    BorderThickness="1">
+                                     Margin="0,16,0,0"
+                                     Padding="16"
+                                     Height="216"
+                                     CornerRadius="14"
+                                     Background="#FFFFFF"
+                                     BorderBrush="#F7FAFD"
+                                     BorderThickness="1">
                                 <Border.Effect>
-                                    <DropShadowEffect BlurRadius="18"
-                                                      ShadowDepth="8"
+                                    <DropShadowEffect BlurRadius="10"
+                                                      ShadowDepth="3"
                                                       Direction="270"
-                                                      Opacity="0.18"
+                                                      Opacity="0.12"
                                                       Color="#B4C1CD"/>
                                 </Border.Effect>
                                 <Grid>
@@ -723,15 +712,15 @@ function Set-StatusUi {
                                            TextWrapping="Wrap"/>
                                 <Border Margin="0,16,0,0"
                                         Padding="16,14"
-                                        CornerRadius="20"
+                                        CornerRadius="12"
                                         Background="#FFFFFF"
                                         BorderBrush="#F4F7FB"
                                         BorderThickness="1">
                                     <Border.Effect>
-                                        <DropShadowEffect BlurRadius="14"
-                                                          ShadowDepth="6"
+                                        <DropShadowEffect BlurRadius="9"
+                                                          ShadowDepth="3"
                                                           Direction="270"
-                                                          Opacity="0.14"
+                                                          Opacity="0.10"
                                                           Color="#BAC6D2"/>
                                     </Border.Effect>
                                     <TextBlock x:Name="OnlineAddress"
@@ -763,8 +752,8 @@ function Set-StatusUi {
                 Visibility="Collapsed"
                 Opacity="0.96">
             <Border.Effect>
-                <DropShadowEffect BlurRadius="18"
-                                  ShadowDepth="6"
+                <DropShadowEffect BlurRadius="12"
+                                  ShadowDepth="4"
                                   Direction="270"
                                   Opacity="0.18"
                                   Color="#9FB0C1"/>
@@ -790,6 +779,8 @@ if (Test-Path $IconPath) {
 }
 
 $titleBar = $window.FindName("TitleBar")
+$headerShell = $window.FindName("HeaderShell")
+$guideShell = $window.FindName("GuideShell")
 $headerIcon = $window.FindName("HeaderIcon")
 $hideWindowButton = $window.FindName("HideWindowButton")
 $closeWindowButton = $window.FindName("CloseWindowButton")
@@ -855,12 +846,20 @@ $onlineCopyButton.Add_Click({
     }
 })
 
-$titleBar.Add_MouseLeftButtonDown({
+$dragWindowAction = {
+    param($sender, $e)
+
     try {
-        $window.DragMove()
+        if ($e.ChangedButton -eq [System.Windows.Input.MouseButton]::Left) {
+            $window.DragMove()
+        }
     } catch {
     }
-})
+}
+
+$titleBar.Add_MouseLeftButtonDown($dragWindowAction)
+$headerShell.Add_MouseLeftButtonDown($dragWindowAction)
+$guideShell.Add_MouseLeftButtonDown($dragWindowAction)
 
 $hideWindowButton.Add_Click({
     $window.Hide()
@@ -896,7 +895,7 @@ function Sync-WindowState {
         -ImagePath $LanQrPngFile `
         -Featured $featuredLan `
         -BadgeLabel $(if ($featuredLan) { "推荐地址" } else { "局域网直连" }) `
-        -AccentColor "#D07F2A"
+        -AccentColor "#D08A35"
 
     Set-CardUi `
         -Card $onlineCard `

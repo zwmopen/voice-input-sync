@@ -320,8 +320,8 @@ function Set-ButtonEnabledState {
     } else {
         $Button.Opacity = 0.58
         $Button.Cursor = [System.Windows.Input.Cursors]::Arrow
-        $Button.Foreground = New-WpfBrush "#8292A3"
-        $Button.Background = New-WpfBrush "#E3EAF2"
+        $Button.Foreground = New-WpfBrush "#8797A8"
+        $Button.Background = New-WpfBrush "#E2EAF3"
     }
 }
 
@@ -403,8 +403,8 @@ try {
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="226"
-        Height="274"
+        Width="212"
+        Height="262"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -413,7 +413,8 @@ try {
         Focusable="True"
         Background="Transparent"
         AllowsTransparency="True"
-        WindowStartupLocation="Manual">
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True">
   <Window.Resources>
     <Style x:Key="MenuButtonStyle" TargetType="Button">
       <Setter Property="Margin" Value="0,0,0,10"/>
@@ -432,17 +433,17 @@ try {
             <Grid>
               <Border x:Name="OuterShadow"
                       Background="{TemplateBinding Background}"
-                      CornerRadius="16">
+                      CornerRadius="12">
                 <Border.Effect>
-                  <DropShadowEffect BlurRadius="12"
-                                    ShadowDepth="4"
+                  <DropShadowEffect BlurRadius="9"
+                                    ShadowDepth="3"
                                     Direction="270"
-                                    Opacity="0.16"
+                                    Opacity="0.15"
                                     Color="#97A6B4"/>
                 </Border.Effect>
               </Border>
-              <Border CornerRadius="16"
-                      BorderBrush="#F8FBFF"
+              <Border CornerRadius="12"
+                      BorderBrush="#F3F8FD"
                       BorderThickness="1"
                       Margin="0.5,0.5,0,0"
                       Opacity="0.9"/>
@@ -455,16 +456,16 @@ try {
       </Setter>
     </Style>
   </Window.Resources>
-  <Border Background="#EDF3F8"
-          BorderBrush="#F7FAFD"
+  <Border Background="#EAF1F8"
+          BorderBrush="#F7FBFF"
           BorderThickness="1"
-          CornerRadius="24"
+          CornerRadius="16"
           Padding="15"
           SnapsToDevicePixels="True">
     <Border.Effect>
-      <DropShadowEffect BlurRadius="22"
+      <DropShadowEffect BlurRadius="16"
                         ShadowDepth="0"
-                        Opacity="0.22"
+                        Opacity="0.18"
                         Color="#7E8FA2"/>
     </Border.Effect>
     <Grid>
@@ -474,9 +475,9 @@ try {
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
       <StackPanel Grid.Row="0">
-        <Border Width="66"
+        <Border Width="54"
                 Height="4"
-                Background="#D07F2A"
+                Background="#D08A35"
                 CornerRadius="4"
                 HorizontalAlignment="Left"
                 Margin="0,0,0,10"/>
@@ -522,11 +523,11 @@ try {
 
     $titleLabel.Text = $titleText
     $subtitleLabel.Text = $subtitleText
-    Set-ButtonPalette -Button $openQrButton -BaseColor "#F5E7D1" -HoverColor "#ECD4B0" -TextColor "#C87720"
-    Set-ButtonPalette -Button $openMobileButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
-    Set-ButtonPalette -Button $copyButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
-    Set-ButtonPalette -Button $settingsButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
-    Set-ButtonPalette -Button $exitButton -BaseColor "#F6E7E6" -HoverColor "#EFD8D6" -TextColor "#C55A51"
+    Set-ButtonPalette -Button $openQrButton -BaseColor "#F4E5CF" -HoverColor "#ECD8B6" -TextColor "#C87720"
+    Set-ButtonPalette -Button $openMobileButton -BaseColor "#EAF1F8" -HoverColor "#DEE8F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $copyButton -BaseColor "#EAF1F8" -HoverColor "#DEE8F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $settingsButton -BaseColor "#EAF1F8" -HoverColor "#DEE8F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $exitButton -BaseColor "#F3E6E6" -HoverColor "#EBD7D6" -TextColor "#C55A51"
     Set-MenuButtonContent -Button $openQrButton -Label $openQrLabel
     Set-MenuButtonContent -Button $openMobileButton -Label $openMobileLabel
     Set-MenuButtonContent -Button $copyButton -Label $copyLabel
@@ -576,8 +577,8 @@ try {
     function Show-CustomMenu {
         Update-MenuAvailability
         $location = Resolve-MenuLocation -Width $popupWindow.Width -Height $popupWindow.Height
-        $popupWindow.Left = $location.X
-        $popupWindow.Top = $location.Y
+        $popupWindow.Left = [Math]::Round($location.X)
+        $popupWindow.Top = [Math]::Round($location.Y)
         $script:PopupVisible = $true
         $script:PopupShownAt = Get-Date
         if (-not $popupWindow.IsVisible) {

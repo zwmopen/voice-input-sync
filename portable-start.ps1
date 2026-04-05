@@ -54,10 +54,16 @@ function Resolve-ManagedExecutablePath {
     return $flatPath
 }
 
-$HttpExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"
-$WsExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"
-$ClientExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient"
-$QrExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncQr"
+$UnifiedRuntimeExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncRuntime"
+$UseUnifiedRuntimeExe = Test-Path $UnifiedRuntimeExe
+$LegacyHttpExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"
+$LegacyWsExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"
+$LegacyClientExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient"
+$LegacyQrExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncQr"
+$HttpExe = if ($UseUnifiedRuntimeExe) { $UnifiedRuntimeExe } else { $LegacyHttpExe }
+$WsExe = if ($UseUnifiedRuntimeExe) { $UnifiedRuntimeExe } else { $LegacyWsExe }
+$ClientExe = if ($UseUnifiedRuntimeExe) { $UnifiedRuntimeExe } else { $LegacyClientExe }
+$QrExe = if ($UseUnifiedRuntimeExe) { $UnifiedRuntimeExe } else { $LegacyQrExe }
 $HttpScript = Join-Path $BaseDir "portable_http_server.py"
 $WsScript = Join-Path $BaseDir "server.py"
 
@@ -99,7 +105,26 @@ function Write-Status {
         updatedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     }
 
-    $payload | ConvertTo-Json -Compress | Set-Content -Path $StatusOutputFile -Encoding UTF8
+    $json = $payload | ConvertTo-Json -Compress
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    $written = $false
+
+    for ($attempt = 0; $attempt -lt 16; $attempt++) {
+        try {
+            [System.IO.File]::WriteAllText($StatusOutputFile, $json, $utf8)
+            $written = $true
+            break
+        } catch {
+            if ($attempt -ge 15) {
+                throw
+            }
+            Start-Sleep -Milliseconds 90
+        }
+    }
+
+    if (-not $written) {
+        throw "启动状态文件写入失败。"
+    }
 }
 
 function Get-ShortcutIconLocation {
@@ -166,6 +191,57 @@ function Get-ExecutableProcess {
     return $matches
 }
 
+function Get-ManagedRoleProcesses {
+    param(
+        [string]$ExecutablePath,
+        [string]$Role = ""
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath) -or -not (Test-Path $ExecutablePath)) {
+        return @()
+    }
+
+    $resolvedPath = ""
+    try {
+        $resolvedPath = (Resolve-Path -LiteralPath $ExecutablePath).Path
+    } catch {
+        return @()
+    }
+
+    $normalizedPath = $resolvedPath.ToLowerInvariant()
+    $hasRole = -not [string]::IsNullOrWhiteSpace($Role)
+    $rolePattern = ""
+    if ($hasRole) {
+        $rolePattern = "(?i)(?:^|\s|`"|')" + [regex]::Escape($Role) + "(?:\s|$)"
+    }
+
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $commandLine = Get-ProcessCommandLineValue -ProcessObject $_
+        $commandLineLower = $commandLine.ToLowerInvariant()
+        $exePath = ""
+        if ($null -ne $_.PSObject.Properties["ExecutablePath"] -and $_.ExecutablePath) {
+            $exePath = [string]$_.ExecutablePath
+        }
+
+        $pathMatched = $false
+        if (-not [string]::IsNullOrWhiteSpace($exePath)) {
+            $pathMatched = $exePath.ToLowerInvariant() -eq $normalizedPath
+        } elseif (-not [string]::IsNullOrWhiteSpace($commandLine)) {
+            $pathMatched = $commandLineLower -like ("*" + [System.IO.Path]::GetFileName($normalizedPath) + "*")
+        }
+
+        if (-not $pathMatched) {
+            return $false
+        }
+
+        if (-not $hasRole) {
+            return $true
+        }
+
+        return $commandLine -match $rolePattern
+    })
+}
+
 function Get-ProcessIdValue {
     param($ProcessObject)
 
@@ -179,6 +255,19 @@ function Get-ProcessIdValue {
     return 0
 }
 
+function Get-LaunchArgumentsForRole {
+    param(
+        [string]$Role,
+        [string[]]$Arguments = @()
+    )
+
+    if ($UseUnifiedRuntimeExe) {
+        return @($Role) + $Arguments
+    }
+
+    return $Arguments
+}
+
 function Get-ProcessCommandLineValue {
     param($ProcessObject)
 
@@ -187,6 +276,43 @@ function Get-ProcessCommandLineValue {
     }
 
     return ""
+}
+
+function Get-ManagedScriptProcesses {
+    param([string]$ScriptPath)
+
+    if ([string]::IsNullOrWhiteSpace($ScriptPath) -or -not (Test-Path $ScriptPath)) {
+        return @()
+    }
+
+    $resolvedScriptPath = ""
+    try {
+        $resolvedScriptPath = (Resolve-Path -LiteralPath $ScriptPath).Path
+    } catch {
+        return @()
+    }
+
+    $escapedScriptPath = [regex]::Escape($resolvedScriptPath)
+    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -and $_.CommandLine -match $escapedScriptPath
+    })
+}
+
+function Test-ManagedRuntimePresent {
+    param(
+        [string]$ExecutablePath = "",
+        [string]$ScriptPath = ""
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExecutablePath) -and (@(Get-ExecutableProcess -ExecutablePath $ExecutablePath)).Length -gt 0) {
+        return $true
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ScriptPath) -and (@(Get-ManagedScriptProcesses -ScriptPath $ScriptPath)).Length -gt 0) {
+        return $true
+    }
+
+    return $false
 }
 
 function Enter-StartupMutex {
@@ -370,21 +496,67 @@ function Wait-ProcessReady {
     return $false
 }
 
+function Wait-ManagedRoleProcessReady {
+    param(
+        [string]$ExecutablePath,
+        [string]$Role,
+        [int]$TimeoutSeconds = 8
+    )
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+        if ((@(Get-ManagedRoleProcesses -ExecutablePath $ExecutablePath -Role $Role)).Length -gt 0) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 180
+    }
+
+    return $false
+}
+
 function Stop-ManagedProcesses {
-    $targets = @($HttpExe, $WsExe, $ClientExe)
+    $targets = New-Object System.Collections.Generic.List[object]
     $stopped = 0
 
-    foreach ($target in $targets) {
-        $processes = @(Get-ExecutableProcess -ExecutablePath $target)
-        foreach ($proc in $processes) {
-            try {
-                $procId = Get-ProcessIdValue -ProcessObject $proc
-                Stop-Process -Id $procId -Force -ErrorAction Stop
-                $stopped++
-                Write-Log ("Self-check stopped PID={0} Path={1}" -f $procId, $target)
-            } catch {
-                Write-Log ("Self-check failed to stop PID={0}: {1}" -f (Get-ProcessIdValue -ProcessObject $proc), $_.Exception.Message)
+    foreach ($proc in @(Get-ExecutableProcess -ExecutablePath $HttpExe)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ExecutableProcess -ExecutablePath $WsExe)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ExecutableProcess -ExecutablePath $ClientExe)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $HttpScript)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $WsScript)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $TrayScript)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $QrWindowScript)) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-TunnelProcesses)) {
+        [void]$targets.Add($proc)
+    }
+
+    $uniqueTargets = @($targets.ToArray() | Group-Object { Get-ProcessIdValue -ProcessObject $_ } | ForEach-Object { $_.Group[0] })
+    foreach ($proc in $uniqueTargets) {
+        try {
+            $procId = Get-ProcessIdValue -ProcessObject $proc
+            if ($procId -le 0 -or $procId -eq $PID) {
+                continue
             }
+
+            Stop-Process -Id $procId -Force -ErrorAction Stop
+            $stopped++
+            $commandLine = Get-ProcessCommandLineValue -ProcessObject $proc
+            Write-Log ("Self-check stopped PID={0} CMD={1}" -f $procId, $commandLine)
+        } catch {
+            Write-Log ("Self-check failed to stop PID={0}: {1}" -f (Get-ProcessIdValue -ProcessObject $proc), $_.Exception.Message)
         }
     }
 
@@ -965,14 +1137,32 @@ function Get-ExistingRunningSession {
         return $null
     }
 
-    if ((@(Get-ExecutableProcess -ExecutablePath $HttpExe)).Length -eq 0) {
-        return $null
-    }
-    if ((@(Get-ExecutableProcess -ExecutablePath $WsExe)).Length -eq 0) {
-        return $null
-    }
-    if ((@(Get-ExecutableProcess -ExecutablePath $ClientExe)).Length -eq 0) {
-        return $null
+    if ($UseUnifiedRuntimeExe) {
+        $httpRolePresent = (@(Get-ManagedRoleProcesses -ExecutablePath $UnifiedRuntimeExe -Role "http")).Length -gt 0
+        $wsRolePresent = (@(Get-ManagedRoleProcesses -ExecutablePath $UnifiedRuntimeExe -Role "ws")).Length -gt 0
+        $clientRolePresent = (@(Get-ManagedRoleProcesses -ExecutablePath $UnifiedRuntimeExe -Role "client")).Length -gt 0
+        $httpScriptPresent = (@(Get-ManagedScriptProcesses -ScriptPath $HttpScript)).Length -gt 0
+        $wsScriptPresent = (@(Get-ManagedScriptProcesses -ScriptPath $WsScript)).Length -gt 0
+
+        if (-not ($httpRolePresent -or $httpScriptPresent)) {
+            return $null
+        }
+        if (-not ($wsRolePresent -or $wsScriptPresent)) {
+            return $null
+        }
+        if (-not $clientRolePresent) {
+            return $null
+        }
+    } else {
+        if (-not (Test-ManagedRuntimePresent -ExecutablePath $HttpExe -ScriptPath $HttpScript)) {
+            return $null
+        }
+        if (-not (Test-ManagedRuntimePresent -ExecutablePath $WsExe -ScriptPath $WsScript)) {
+            return $null
+        }
+        if ((@(Get-ExecutableProcess -ExecutablePath $ClientExe)).Length -eq 0) {
+            return $null
+        }
     }
     if (-not (Test-TcpPortListening -Port $httpPort)) {
         return $null
@@ -1200,7 +1390,8 @@ function Update-ShareArtifacts {
                 "--online-png", $QrOnlinePngFile,
                 "--lan-png", $QrLanPngFile
             )
-            & $QrExe @qrArgs
+            $qrLaunchArgs = Get-LaunchArgumentsForRole -Role "qr" -Arguments $qrArgs
+            & $QrExe @qrLaunchArgs
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true
             }
@@ -1254,7 +1445,11 @@ try {
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
-                $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
+                if ($ForceOpenPage) {
+                    $pageOpened = Open-PageTarget -Target $existingSession.PageTarget
+                } else {
+                    $pageOpened = Try-OpenPageWithCooldown -Target $existingSession.PageTarget -Url $existingSession.Url
+                }
             }
 
             Start-TrayResident | Out-Null
@@ -1349,10 +1544,13 @@ try {
         Launch-PythonScriptProcess -Name "http" -PythonPath $pythonExe -ScriptPath $HttpScript -Arguments @("--port", $httpPort) | Out-Null
         Launch-PythonScriptProcess -Name "ws" -PythonPath $pythonExe -ScriptPath $WsScript -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
     } else {
-        Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments @("--port", $httpPort) | Out-Null
-        Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
+        $httpLaunchArgs = Get-LaunchArgumentsForRole -Role "http" -Arguments @("--port", $httpPort)
+        $wsLaunchArgs = Get-LaunchArgumentsForRole -Role "ws" -Arguments @("--port", $wsPort, "--session-token", $sessionToken)
+        Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments $httpLaunchArgs | Out-Null
+        Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments $wsLaunchArgs | Out-Null
     }
-    Launch-PortableProcess -Name "client" -ExePath $ClientExe -Arguments @("--ws-url", "ws://127.0.0.1:$wsPort", "--session-token", $sessionToken) | Out-Null
+    $clientLaunchArgs = Get-LaunchArgumentsForRole -Role "client" -Arguments @("--ws-url", "ws://127.0.0.1:$wsPort", "--session-token", $sessionToken)
+    Launch-PortableProcess -Name "client" -ExePath $ClientExe -Arguments $clientLaunchArgs | Out-Null
 
     $httpOk = Wait-PortReady -Port $httpPort -TimeoutSeconds 20
     Write-Log "http port ready: $httpOk"
@@ -1366,7 +1564,11 @@ try {
         throw ("同步服务启动失败，端口 {0} 没有成功监听。" -f $wsPort)
     }
 
-    $clientOk = Wait-ProcessReady -ExePath $ClientExe -TimeoutSeconds 8
+    if ($UseUnifiedRuntimeExe) {
+        $clientOk = Wait-ManagedRoleProcessReady -ExecutablePath $UnifiedRuntimeExe -Role "client" -TimeoutSeconds 8
+    } else {
+        $clientOk = Wait-ProcessReady -ExePath $ClientExe -TimeoutSeconds 8
+    }
     Write-Log "client process ready: $clientOk"
     if (-not $clientOk) {
         throw "电脑输入端没有成功启动。"
@@ -1391,7 +1593,11 @@ try {
     $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
     $pageOpened = $false
     if ($shouldOpenPage) {
-        $pageOpened = Try-OpenPageWithCooldown -Target $pageTarget -Url $url
+        if ($ForceOpenPage) {
+            $pageOpened = Open-PageTarget -Target $pageTarget
+        } else {
+            $pageOpened = Try-OpenPageWithCooldown -Target $pageTarget -Url $url
+        }
     }
     Write-Log "Startup result: HTTP=$httpOk WS=$wsOk CLIENT=$clientOk QR=$qrOk URL=$url"
     Write-Status -State "success" -Title "启动好了" -Detail "扫码页已经准备好，马上为你打开。" -Emoji "✅" -Percent 100 -Url $url -PageTarget $pageTarget -OpenHandled $pageOpened -ReuseSession $false

@@ -14,14 +14,14 @@ New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 function Resolve-ManagedExecutablePath {
     param([string]$BaseName)
 
-    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
-    if (Test-Path $flatPath) {
-        return $flatPath
-    }
-
     $folderPath = Join-Path (Join-Path $BaseDir $BaseName) ($BaseName + ".exe")
     if (Test-Path $folderPath) {
         return $folderPath
+    }
+
+    $flatPath = Join-Path $BaseDir ($BaseName + ".exe")
+    if (Test-Path $flatPath) {
+        return $flatPath
     }
 
     return $flatPath
@@ -34,7 +34,9 @@ function Write-Log {
 }
 
 function Get-ManagedProcesses {
+    $runtimeExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncRuntime"
     $targets = @(
+        $runtimeExe,
         (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"),
         (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"),
         (Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient")
@@ -66,12 +68,46 @@ function Get-ManagedProcesses {
     return $processes
 }
 
-function Get-ManagedAuxiliaryProcesses {
-    $trayPattern = [regex]::Escape((Join-Path $BaseDir "portable-tray.ps1"))
+function Get-ManagedScriptProcesses {
+    param([string]$ScriptPath)
 
+    if ([string]::IsNullOrWhiteSpace($ScriptPath) -or -not (Test-Path $ScriptPath)) {
+        return @()
+    }
+
+    $resolvedScriptPath = ""
+    try {
+        $resolvedScriptPath = (Resolve-Path -LiteralPath $ScriptPath).Path
+    } catch {
+        return @()
+    }
+
+    $escapedScriptPath = [regex]::Escape($resolvedScriptPath)
     return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-        $_.CommandLine -and $_.CommandLine -match $trayPattern
+        $_.CommandLine -and $_.CommandLine -match $escapedScriptPath
     })
+}
+
+function Get-ManagedAuxiliaryProcesses {
+    $targets = New-Object System.Collections.Generic.List[object]
+
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable-tray.ps1"))) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable-launch-ui.ps1"))) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable-qr-window.ps1"))) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable_http_server.py"))) {
+        [void]$targets.Add($proc)
+    }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "server.py"))) {
+        [void]$targets.Add($proc)
+    }
+
+    return @($targets.ToArray() | Group-Object ProcessId | ForEach-Object { $_.Group[0] })
 }
 
 function Get-ProcessIdValue {

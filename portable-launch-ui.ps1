@@ -45,6 +45,7 @@ $script:TipMessages = @(
 )
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
+Remove-Item -LiteralPath $StatusFile -Force -ErrorAction SilentlyContinue
 
 function Get-Text {
     param([int[]]$Codes)
@@ -87,7 +88,23 @@ function Read-StartupStatus {
     }
 
     try {
-        return Get-Content -Raw -LiteralPath $StatusFile -Encoding UTF8 | ConvertFrom-Json
+        $stream = [System.IO.File]::Open($StatusFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8, $true)
+            try {
+                $content = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+        } finally {
+            $stream.Dispose()
+        }
+
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            return $null
+        }
+
+        return $content | ConvertFrom-Json
     } catch {
         return $null
     }
@@ -269,27 +286,27 @@ function Set-BadgeState {
         $script:StatusBadgeText.Text = Get-Text @(0x5DF2,0x5C31,0x7EEA)
         $script:StatusBadgeText.Foreground = New-Brush "#FFFFFF"
         $script:HeroOrb.Fill = New-Brush "#E7F3EC"
-        $script:HeroRing.Stroke = New-Brush "#C7DDD0"
+        $script:HeroRing.Stroke = New-Brush "#CBE5D7"
         $script:HeroAccent.Fill = New-Brush "#4DB57C"
         return
     }
 
     if ($State -eq "error") {
-        $script:StatusBadge.Background = New-Brush "#C14E4A"
+        $script:StatusBadge.Background = New-Brush "#C35A58"
         $script:StatusBadgeText.Text = Get-Text @(0x542F,0x52A8,0x5931,0x8D25)
         $script:StatusBadgeText.Foreground = New-Brush "#FFFFFF"
-        $script:HeroOrb.Fill = New-Brush "#F4E8E7"
-        $script:HeroRing.Stroke = New-Brush "#E5CFCB"
-        $script:HeroAccent.Fill = New-Brush "#C14E4A"
+        $script:HeroOrb.Fill = New-Brush "#F7ECEC"
+        $script:HeroRing.Stroke = New-Brush "#E8D4D2"
+        $script:HeroAccent.Fill = New-Brush "#C35A58"
         return
     }
 
-    $script:StatusBadge.Background = New-Brush "#D07F2A"
+    $script:StatusBadge.Background = New-Brush "#D08A35"
     $script:StatusBadgeText.Text = Get-Text @(0x542F,0x52A8,0x4E2D)
     $script:StatusBadgeText.Foreground = New-Brush "#FFFFFF"
-    $script:HeroOrb.Fill = New-Brush "#EDF2F7"
-    $script:HeroRing.Stroke = New-Brush "#D9E1EA"
-    $script:HeroAccent.Fill = New-Brush "#D07F2A"
+    $script:HeroOrb.Fill = New-Brush "#F1F5FA"
+    $script:HeroRing.Stroke = New-Brush "#D6E0EC"
+    $script:HeroAccent.Fill = New-Brush "#D08A35"
 }
 
 function Set-StageState {
@@ -300,24 +317,24 @@ function Set-StageState {
 
     switch ($Mode) {
         "done" {
-            $Chip.Background = New-Brush "#E7F3EC"
-            $Chip.BorderBrush = New-Brush "#D2E7DB"
-            $Chip.Child.Foreground = New-Brush "#278659"
+            $Chip.Background = New-Brush "#EAF1F8"
+            $Chip.BorderBrush = New-Brush "#D8E4EF"
+            $Chip.Child.Foreground = New-Brush "#35567F"
         }
         "active" {
-            $Chip.Background = New-Brush "#F2E7D9"
-            $Chip.BorderBrush = New-Brush "#E9D2B4"
-            $Chip.Child.Foreground = New-Brush "#D07F2A"
+            $Chip.Background = New-Brush "#F4E5CF"
+            $Chip.BorderBrush = New-Brush "#EACFA9"
+            $Chip.Child.Foreground = New-Brush "#D08A35"
         }
         "error" {
-            $Chip.Background = New-Brush "#F4E8E7"
-            $Chip.BorderBrush = New-Brush "#E5CFCB"
-            $Chip.Child.Foreground = New-Brush "#C14E4A"
+            $Chip.Background = New-Brush "#F7ECEC"
+            $Chip.BorderBrush = New-Brush "#E8D4D2"
+            $Chip.Child.Foreground = New-Brush "#C35A58"
         }
         default {
-            $Chip.Background = New-Brush "#EDF2F7"
-            $Chip.BorderBrush = New-Brush "#D9E1EA"
-            $Chip.Child.Foreground = New-Brush "#6F7F94"
+            $Chip.Background = New-Brush "#EEF3F9"
+            $Chip.BorderBrush = New-Brush "#D9E3EE"
+            $Chip.Child.Foreground = New-Brush "#6B7D92"
         }
     }
 }
@@ -370,7 +387,7 @@ function Update-ProgressFill {
     }
 
     if ($State -eq "success") {
-        $script:ProgressTrack.Background = New-Brush "#DCEEE3"
+        $script:ProgressTrack.Background = New-Brush "#DCEFE4"
         $script:ProgressFill.Background = New-Brush "#4DB57C"
         $script:ProgressFill.Width = $trackWidth
         $script:ProgressFill.RenderTransform.X = 0
@@ -379,8 +396,8 @@ function Update-ProgressFill {
     }
 
     if ($State -eq "error") {
-        $script:ProgressTrack.Background = New-Brush "#F1DDDC"
-        $script:ProgressFill.Background = New-Brush "#C14E4A"
+        $script:ProgressTrack.Background = New-Brush "#F4E4E3"
+        $script:ProgressFill.Background = New-Brush "#C35A58"
         $script:ProgressFill.Width = $trackWidth
         $script:ProgressFill.RenderTransform.X = 0
         $script:ProgressShimmer.Visibility = "Collapsed"
@@ -388,8 +405,8 @@ function Update-ProgressFill {
     }
 
     $segmentWidth = [Math]::Min([Math]::Max(150, [Math]::Floor($trackWidth * 0.34)), [Math]::Max(86, $trackWidth - 18))
-    $script:ProgressTrack.Background = New-Brush "#D8E0E9"
-    $script:ProgressFill.Background = New-Brush "#D07F2A"
+    $script:ProgressTrack.Background = New-Brush "#D9E4EF"
+    $script:ProgressFill.Background = New-Brush "#D08A35"
     $script:ProgressFill.Width = $segmentWidth
     $script:ProgressShimmer.Visibility = "Visible"
 }
@@ -498,7 +515,7 @@ function Start-BackendLaunch {
         "-ExecutionPolicy", "Bypass",
         "-File", $StartupScript,
         "-Silent",
-        "-OpenPageOnSuccess"
+        "-ForceOpenPage"
     )
 
     $script:StartupProcess = Start-Process powershell.exe -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
@@ -507,8 +524,8 @@ function Start-BackendLaunch {
 
 function Arm-AutoMinimize {
     param(
-        [int]$MinimumVisibleSeconds = 0,
-        [int]$PostSuccessSeconds = 1
+        [int]$MinimumVisibleSeconds = 8,
+        [int]$PostSuccessSeconds = 6
     )
 
     if (-not $script:CloseTimer) {
@@ -525,10 +542,13 @@ function Arm-AutoMinimize {
     $script:CloseTimer.Stop()
     $script:CloseTimer.Interval = [TimeSpan]::FromSeconds($delaySeconds)
     $script:CloseTimer.Start()
-    Write-UiLog ("将在 {0} 秒后自动关闭启动窗口。" -f $delaySeconds)
+    Write-UiLog ("将在 {0} 秒后自动缩到任务栏。" -f $delaySeconds)
 }
 
 if (-not (Enter-LauncherMutex)) {
+    Write-UiLog "检测到已有启动窗口，直接打开当前扫码页。"
+    $existingTarget = if (Test-Path $QrHtmlFile) { $QrHtmlFile } else { (Resolve-OpenTarget) }
+    [void](Invoke-ShellOpen -Target $existingTarget)
     exit 0
 }
 
@@ -543,25 +563,58 @@ try {
         Height="640"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize"
-        Background="#EDF2F7"
+        Background="#E9EFF6"
         ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
+    <Window.Resources>
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Margin" Value="0,0,12,0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#D7E1EC"/>
+            <Setter Property="Background" Value="#EAF1F8"/>
+            <Setter Property="Foreground" Value="#2B3F57"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10"
+                                                  ShadowDepth="3"
+                                                  Direction="270"
+                                                  Opacity="0.16"
+                                                  Color="#A4B3C2"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#EDF2F7" Offset="0"/>
-                <GradientStop Color="#DDE4EC" Offset="1"/>
+                <GradientStop Color="#EAF1F8" Offset="0"/>
+                <GradientStop Color="#DCE5F0" Offset="1"/>
             </LinearGradientBrush>
         </Grid.Background>
 
         <Border Margin="28"
-                CornerRadius="32"
-                Background="#E7ECF2"
+                CornerRadius="22"
+                Background="#E8EFF6"
                 BorderBrush="#F7FAFD"
                 BorderThickness="1">
             <Border.Effect>
-                <DropShadowEffect BlurRadius="34" ShadowDepth="16" Direction="315" Color="#97A5B4" Opacity="0.35"/>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="8" Direction="315" Color="#93A5B8" Opacity="0.23"/>
             </Border.Effect>
 
             <Grid Margin="26">
@@ -583,28 +636,28 @@ try {
                     <Border Width="64"
                             Height="8"
                             Margin="0,0,10,0"
-                            Background="#D07F2A"
+                            Background="#D08A35"
                             CornerRadius="8"/>
                     <Border Width="14"
                             Height="8"
                             Margin="0,0,8,0"
-                            Background="#E6C39A"
+                            Background="#E6C79D"
                             CornerRadius="8"/>
                     <Border Width="14"
                             Height="8"
-                            Background="#D9E3ED"
+                            Background="#CFDBE8"
                             CornerRadius="8"/>
                 </StackPanel>
 
                 <Border Grid.Row="1"
                         Grid.Column="0"
                         Padding="26"
-                        CornerRadius="28"
-                        Background="#EAF0F6"
+                        CornerRadius="18"
+                        Background="#EEF3F9"
                         BorderBrush="#F7FAFD"
                         BorderThickness="1">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="22" ShadowDepth="10" Direction="315" Color="#A5B3C2" Opacity="0.28"/>
+                        <DropShadowEffect BlurRadius="16" ShadowDepth="6" Direction="315" Color="#A5B5C6" Opacity="0.2"/>
                     </Border.Effect>
 
                     <Grid>
@@ -617,8 +670,8 @@ try {
                         <Border x:Name="StatusBadge"
                                 HorizontalAlignment="Left"
                                 Padding="18,8"
-                                CornerRadius="18"
-                                Background="#D07F2A">
+                                CornerRadius="14"
+                                Background="#D08A35">
                             <TextBlock x:Name="StatusBadgeText"
                                        Text="&#x542F;&#x52A8;&#x4E2D;"
                                        FontSize="18"
@@ -630,19 +683,19 @@ try {
                             <Ellipse x:Name="HeroOrb"
                                      Width="176"
                                      Height="176"
-                                     Fill="#EDF2F7"
+                                     Fill="#F1F5FA"
                                      Stroke="#F8FBFE"
                                      StrokeThickness="2"/>
                             <Ellipse x:Name="HeroRing"
                                      Width="132"
                                      Height="132"
-                                     Stroke="#D9E1EA"
+                                     Stroke="#D6E0EC"
                                      StrokeThickness="14"
                                      Fill="Transparent"/>
                             <Ellipse x:Name="HeroAccent"
                                      Width="84"
                                      Height="84"
-                                     Fill="#D07F2A"
+                                     Fill="#D08A35"
                                      Opacity="0.18"/>
                             <TextBlock x:Name="HeroEmoji"
                                        Text="&#x1F4AB;"
@@ -658,12 +711,12 @@ try {
                                        Margin="0,8,0,8"
                                        FontSize="28"
                                        FontWeight="Bold"
-                                       Foreground="#2B3B4F"
+                                       Foreground="#24384F"
                                        TextWrapping="Wrap"/>
                             <TextBlock x:Name="HeroSubtitle"
                                        Text="&#x4F1A;&#x5148;&#x68C0;&#x67E5;&#x6B8B;&#x7559;&#x8FDB;&#x7A0B;&#x3001;&#x7AEF;&#x53E3;&#x548C;&#x542F;&#x52A8;&#x73AF;&#x5883;&#x3002;"
                                        FontSize="16"
-                                       Foreground="#6F7F94"
+                                       Foreground="#6B7D92"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                     </Grid>
@@ -672,12 +725,12 @@ try {
                 <Border Grid.Row="1"
                         Grid.Column="2"
                         Padding="30"
-                        CornerRadius="28"
-                        Background="#EAF0F6"
+                        CornerRadius="18"
+                        Background="#EEF3F9"
                         BorderBrush="#F7FAFD"
                         BorderThickness="1">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="22" ShadowDepth="10" Direction="315" Color="#A5B3C2" Opacity="0.28"/>
+                        <DropShadowEffect BlurRadius="16" ShadowDepth="6" Direction="315" Color="#A5B5C6" Opacity="0.2"/>
                     </Border.Effect>
 
                     <Grid>
@@ -695,14 +748,14 @@ try {
                                    Text="&#x6B63;&#x5728;&#x542F;&#x52A8;&#x540C;&#x6B65;&#x670D;&#x52A1;"
                                    FontSize="34"
                                    FontWeight="Bold"
-                                   Foreground="#2B3B4F"/>
+                                   Foreground="#24384F"/>
 
                         <TextBlock x:Name="SubtitleText"
                                    Grid.Row="1"
                                    Margin="0,12,0,0"
                                    Text="&#x4F1A;&#x5148;&#x627E;&#x53EF;&#x7528;&#x7AEF;&#x53E3;&#xFF0C;&#x518D;&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;&#x3002;"
                                    FontSize="18"
-                                   Foreground="#6F7F94"
+                                   Foreground="#6B7D92"
                                    TextWrapping="Wrap"/>
 
                         <StackPanel Grid.Row="2"
@@ -711,37 +764,37 @@ try {
                             <Border x:Name="StageChipOne"
                                     Padding="16,8"
                                     Margin="0,0,12,0"
-                                    CornerRadius="18"
-                                    Background="#F2E7D9"
-                                    BorderBrush="#E9D2B4"
+                                    CornerRadius="14"
+                                    Background="#F4E5CF"
+                                    BorderBrush="#EACFA9"
                                     BorderThickness="1">
                                 <TextBlock Text="&#x68C0;&#x67E5;&#x73AF;&#x5883;"
                                            FontSize="16"
                                            FontWeight="SemiBold"
-                                           Foreground="#D07F2A"/>
+                                           Foreground="#D08A35"/>
                             </Border>
                             <Border x:Name="StageChipTwo"
                                     Padding="16,8"
                                     Margin="0,0,12,0"
-                                    CornerRadius="18"
-                                    Background="#EDF2F7"
-                                    BorderBrush="#D9E1EA"
+                                    CornerRadius="14"
+                                    Background="#EEF3F9"
+                                    BorderBrush="#D9E3EE"
                                     BorderThickness="1">
                                 <TextBlock Text="&#x542F;&#x52A8;&#x540C;&#x6B65;"
                                            FontSize="16"
                                            FontWeight="SemiBold"
-                                           Foreground="#6F7F94"/>
+                                           Foreground="#6B7D92"/>
                             </Border>
                             <Border x:Name="StageChipThree"
                                     Padding="16,8"
-                                    CornerRadius="18"
-                                    Background="#EDF2F7"
-                                    BorderBrush="#D9E1EA"
+                                    CornerRadius="14"
+                                    Background="#EEF3F9"
+                                    BorderBrush="#D9E3EE"
                                     BorderThickness="1">
                                 <TextBlock Text="&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;"
                                            FontSize="16"
                                            FontWeight="SemiBold"
-                                           Foreground="#6F7F94"/>
+                                           Foreground="#6B7D92"/>
                             </Border>
                         </StackPanel>
 
@@ -751,7 +804,7 @@ try {
                                    Text="&#x6B63;&#x5728;&#x68C0;&#x67E5;&#x73AF;&#x5883;..."
                                    FontSize="23"
                                    FontWeight="SemiBold"
-                                   Foreground="#2B3B4F"
+                                   Foreground="#24384F"
                                    TextWrapping="Wrap"/>
 
                         <TextBlock x:Name="TipText"
@@ -759,7 +812,7 @@ try {
                                    Margin="0,14,0,0"
                                    Text="&#x6B63;&#x5E38;&#x60C5;&#x51B5;&#x4E0B;&#x53EA;&#x8981;&#x51E0;&#x79D2;&#x3002;"
                                    FontSize="16"
-                                   Foreground="#6F7F94"
+                                   Foreground="#6B7D92"
                                    TextWrapping="Wrap"/>
 
                         <Grid Grid.Row="5" Margin="0,34,0,0" VerticalAlignment="Bottom">
@@ -769,16 +822,16 @@ try {
                             </Grid.RowDefinitions>
 
                             <Border x:Name="ProgressTrack"
-                                    Height="18"
-                                    Background="#D8E0E9"
-                                    CornerRadius="9"
+                                    Height="14"
+                                    Background="#D9E4EF"
+                                    CornerRadius="8"
                                     SnapsToDevicePixels="True">
                                 <Grid ClipToBounds="True">
                                     <Border x:Name="ProgressFill"
                                             HorizontalAlignment="Left"
                                             Width="150"
-                                            Background="#D07F2A"
-                                            CornerRadius="9">
+                                            Background="#D08A35"
+                                            CornerRadius="8">
                                         <Border.RenderTransform>
                                             <TranslateTransform X="-150"/>
                                         </Border.RenderTransform>
@@ -786,7 +839,7 @@ try {
                                     <Border x:Name="ProgressShimmer"
                                             Width="110"
                                             HorizontalAlignment="Left"
-                                            CornerRadius="9"
+                                            CornerRadius="8"
                                             Background="#45FFFFFF"
                                             IsHitTestVisible="False">
                                         <Border.RenderTransform>
@@ -801,7 +854,7 @@ try {
                                        Margin="0,12,0,0"
                                        Text="&#x6B63;&#x5728;&#x51C6;&#x5907;&#x542F;&#x52A8;&#x73AF;&#x5883;..."
                                        FontSize="15"
-                                       Foreground="#6F7F94"
+                                       Foreground="#6B7D92"
                                        TextWrapping="Wrap"/>
                         </Grid>
 
@@ -811,26 +864,24 @@ try {
                                     HorizontalAlignment="Left">
                             <Button x:Name="OpenButton"
                                     Content="&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;"
-                                    Width="130"
-                                    Height="44"
-                                    Margin="0,0,12,0"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Width="140"
                                     Visibility="Collapsed"/>
                             <Button x:Name="CopyButton"
                                     Content="&#x590D;&#x5236;&#x624B;&#x673A;&#x5730;&#x5740;"
-                                    Width="130"
-                                    Height="44"
-                                    Margin="0,0,12,0"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Width="146"
                                     Visibility="Collapsed"/>
                             <Button x:Name="LogButton"
                                     Content="&#x67E5;&#x770B;&#x65E5;&#x5FD7;"
-                                    Width="110"
-                                    Height="44"
-                                    Margin="0,0,12,0"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Width="116"
                                     Visibility="Collapsed"/>
                             <Button x:Name="CloseButton"
                                     Content="&#x6682;&#x65F6;&#x6536;&#x8D77;"
+                                    Style="{StaticResource ActionButtonStyle}"
                                     Width="136"
-                                    Height="44"/>
+                                    Margin="0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -877,12 +928,12 @@ try {
     $script:CloseButton = $window.FindName("CloseButton")
 
     foreach ($button in @($script:OpenButton, $script:CopyButton, $script:LogButton, $script:CloseButton)) {
-        $button.Background = New-Brush "#EDF2F7"
-        $button.BorderBrush = New-Brush "#D9E1EA"
-        $button.Foreground = New-Brush "#2B3B4F"
+        $button.Background = New-Brush "#EAF1F8"
+        $button.BorderBrush = New-Brush "#D7E1EC"
+        $button.Foreground = New-Brush "#2B3F57"
     }
-    $script:OpenButton.Background = New-Brush "#D07F2A"
-    $script:OpenButton.BorderBrush = New-Brush "#D07F2A"
+    $script:OpenButton.Background = New-Brush "#D08A35"
+    $script:OpenButton.BorderBrush = New-Brush "#D08A35"
     $script:OpenButton.Foreground = New-Brush "#FFFFFF"
 
     Set-BadgeState -State "running"
@@ -918,7 +969,7 @@ try {
             return
         }
 
-        Hide-LauncherWindow
+        Minimize-LauncherWindow
     })
 
     $window.Add_Closing({
@@ -929,7 +980,7 @@ try {
         }
 
         $e.Cancel = $true
-        Hide-LauncherWindow
+        Minimize-LauncherWindow
     })
 
     $animationTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -962,7 +1013,7 @@ try {
     $closeTimer.Interval = [TimeSpan]::FromMilliseconds(10000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
-        Close-LauncherWindow
+        Minimize-LauncherWindow
     })
 
     $launchTimer = New-Object System.Windows.Threading.DispatcherTimer
