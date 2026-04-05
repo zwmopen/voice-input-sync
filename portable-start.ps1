@@ -15,9 +15,12 @@ $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $ShareUrlFile = Join-Path $PackageDir "手机打开这个地址.txt"
 $QrHtmlFile = Join-Path $PackageDir "手机扫码打开.html"
 $QrSvgFile = Join-Path $PackageDir "手机扫码连接.svg"
+$QrLanPngFile = Join-Path $PackageDir "qr-lan.png"
+$QrOnlinePngFile = Join-Path $PackageDir "qr-online.png"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
 $TrayScript = Join-Path $BaseDir "portable-tray.ps1"
+$QrWindowScript = Join-Path $BaseDir "portable-qr-window.ps1"
 $StartBat = Join-Path $PackageDir "双击启动语音输入同步.bat"
 $LauncherVbs = Join-Path $PackageDir "启动语音输入同步.vbs"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
@@ -97,6 +100,31 @@ function Write-Status {
     }
 
     $payload | ConvertTo-Json -Compress | Set-Content -Path $StatusOutputFile -Encoding UTF8
+}
+
+function Get-ShortcutIconLocation {
+    if (-not (Test-Path $ShortcutIcon)) {
+        return ""
+    }
+
+    try {
+        $iconHash = (Get-FileHash -LiteralPath $ShortcutIcon -Algorithm SHA256).Hash.Substring(0, 8).ToLowerInvariant()
+        $iconDir = Split-Path -Parent $ShortcutIcon
+        $shortcutIconPath = Join-Path $iconDir ("voice-sync-shortcut-{0}.ico" -f $iconHash)
+
+        if (-not (Test-Path $shortcutIconPath)) {
+            Copy-Item -LiteralPath $ShortcutIcon -Destination $shortcutIconPath -Force
+        }
+
+        Get-ChildItem -LiteralPath $iconDir -Filter "voice-sync-shortcut-*.ico" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $shortcutIconPath } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        return ($shortcutIconPath + ",0")
+    } catch {
+        Write-Log ("Shortcut icon refresh failed: " + $_.Exception.Message)
+        return ($ShortcutIcon + ",0")
+    }
 }
 
 function Read-Status {
@@ -635,7 +663,7 @@ function Ensure-DesktopShortcut {
         return $false
     }
 
-    $iconLocation = if (Test-Path $ShortcutIcon) { "$ShortcutIcon,0" } else { "" }
+    $iconLocation = Get-ShortcutIconLocation
 
     if (Test-Path $DesktopShortcut) {
         try {
@@ -1054,6 +1082,37 @@ function Open-PageTarget {
             $resolvedTarget = (Resolve-Path -LiteralPath $Target).Path
         }
 
+        $resolvedQrHtml = ""
+        try {
+            if (Test-Path $QrHtmlFile) {
+                $resolvedQrHtml = (Resolve-Path -LiteralPath $QrHtmlFile).Path
+            }
+        } catch {
+            $resolvedQrHtml = ""
+        }
+
+        if ($resolvedQrHtml -and $resolvedTarget -eq $resolvedQrHtml -and (Test-Path $QrWindowScript)) {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ProcessId -ne $PID -and
+                    $_.CommandLine -and
+                    $_.CommandLine -like '*portable-qr-window.ps1*'
+                } |
+                ForEach-Object {
+                    try {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                    } catch {
+                    }
+                }
+
+            Start-Process -FilePath (Get-Command powershell.exe).Source `
+                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $QrWindowScript) `
+                -WorkingDirectory $PackageDir `
+                -WindowStyle Hidden | Out-Null
+            Write-Log ("Opened QR window: {0}" -f $QrWindowScript)
+            return $true
+        }
+
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName = $resolvedTarget
         $psi.UseShellExecute = $true
@@ -1135,7 +1194,12 @@ function Update-ShareArtifacts {
             if (-not [string]::IsNullOrWhiteSpace($StatusWsUrl)) {
                 $qrArgs += @("--status-ws-url", $StatusWsUrl)
             }
-            $qrArgs += @("--online-url", $OnlineUrl, "--lan-url", $LanUrl)
+            $qrArgs += @(
+                "--online-url", $OnlineUrl,
+                "--lan-url", $LanUrl,
+                "--online-png", $QrOnlinePngFile,
+                "--lan-png", $QrLanPngFile
+            )
             & $QrExe @qrArgs
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true

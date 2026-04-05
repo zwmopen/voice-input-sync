@@ -50,6 +50,32 @@ function New-Shortcut {
     $shortcut.Save()
 }
 
+function Resolve-ShortcutIconLocation {
+    param([string]$BaseIconPath)
+
+    if (-not $BaseIconPath -or -not (Test-Path $BaseIconPath)) {
+        return ""
+    }
+
+    try {
+        $iconHash = (Get-FileHash -LiteralPath $BaseIconPath -Algorithm SHA256).Hash.Substring(0, 8).ToLowerInvariant()
+        $iconDir = Split-Path -Parent $BaseIconPath
+        $shortcutIconPath = Join-Path $iconDir ("voice-sync-shortcut-{0}.ico" -f $iconHash)
+
+        if (-not (Test-Path $shortcutIconPath)) {
+            Copy-Item -LiteralPath $BaseIconPath -Destination $shortcutIconPath -Force
+        }
+
+        Get-ChildItem -LiteralPath $iconDir -Filter "voice-sync-shortcut-*.ico" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $shortcutIconPath } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        return $shortcutIconPath
+    } catch {
+        return $BaseIconPath
+    }
+}
+
 $contentRoot = ""
 if ($SourceDir -and (Test-Path $SourceDir)) {
     $contentRoot = $SourceDir
@@ -129,16 +155,18 @@ try {
         $launcherArguments = ('//nologo "{0}"' -f $launcherVbs)
     }
 
-    New-Shortcut -ShortcutPath $desktopShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
-    New-Shortcut -ShortcutPath $startMenuShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
-    New-Shortcut -ShortcutPath $uninstallShortcutPath -TargetPath $uninstallBat -WorkingDirectory $installDir -IconLocation $iconPath -Description ("卸载" + $productName)
+    $shortcutIconPath = Resolve-ShortcutIconLocation -BaseIconPath $iconPath
+
+    New-Shortcut -ShortcutPath $desktopShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $shortcutIconPath -Description $productName
+    New-Shortcut -ShortcutPath $startMenuShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $shortcutIconPath -Description $productName
+    New-Shortcut -ShortcutPath $uninstallShortcutPath -TargetPath $uninstallBat -WorkingDirectory $installDir -IconLocation $shortcutIconPath -Description ("卸载" + $productName)
 
     New-Item -Path $uninstallRegistryKey -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayName" -Value $productName -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayVersion" -Value $productVersion -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "Publisher" -Value "zwmopen" -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "InstallLocation" -Value $installDir -PropertyType String -Force | Out-Null
-    New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayIcon" -Value $iconPath -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $uninstallRegistryKey -Name "DisplayIcon" -Value $shortcutIconPath -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "UninstallString" -Value ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $uninstallScript + '"') -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null

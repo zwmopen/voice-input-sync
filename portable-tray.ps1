@@ -1,4 +1,4 @@
-param()
+﻿param()
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -16,6 +16,7 @@ $LogsDir = Join-Path $PackageDir "logs"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $QrHtmlFile = Join-Path $PackageDir ((-join ([int[]](0x624B,0x673A,0x626B,0x7801,0x6253,0x5F00) | ForEach-Object { [char]$_ })) + ".html")
+$QrWindowScript = Join-Path $BaseDir "portable-qr-window.ps1"
 $StopScript = Join-Path $BaseDir "portable-stop.ps1"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $MutexName = "Local\VoiceInputSyncPortableTray"
@@ -135,6 +136,37 @@ function Open-Target {
         $resolvedTarget = $Target
         if (-not ($Target -match '^[a-zA-Z][a-zA-Z0-9+.-]*://')) {
             $resolvedTarget = (Resolve-Path -LiteralPath $Target).Path
+        }
+
+        $resolvedQrHtml = ""
+        try {
+            if (Test-Path $QrHtmlFile) {
+                $resolvedQrHtml = (Resolve-Path -LiteralPath $QrHtmlFile).Path
+            }
+        } catch {
+            $resolvedQrHtml = ""
+        }
+
+        if ($resolvedQrHtml -and $resolvedTarget -eq $resolvedQrHtml -and (Test-Path $QrWindowScript)) {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ProcessId -ne $PID -and
+                    $_.CommandLine -and
+                    $_.CommandLine -like '*portable-qr-window.ps1*'
+                } |
+                ForEach-Object {
+                    try {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                    } catch {
+                    }
+                }
+
+            Start-Process -FilePath (Get-Command powershell.exe).Source `
+                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $QrWindowScript) `
+                -WorkingDirectory $PackageDir `
+                -WindowStyle Hidden | Out-Null
+            Write-Log ("Opened QR window: {0}" -f $QrWindowScript)
+            return $true
         }
 
         $psi = New-Object System.Diagnostics.ProcessStartInfo

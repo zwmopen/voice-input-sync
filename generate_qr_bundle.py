@@ -31,6 +31,20 @@ def build_svg(url: str, output_path: Path) -> None:
     output_path.write_text(build_svg_text(url), encoding="utf-8")
 
 
+def build_png(url: str, output_path: Path) -> None:
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=12,
+        border=2,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+
+    image = qr.make_image(fill_color="#1D2630", back_color="white")
+    image.save(output_path)
+
+
 def svg_to_data_uri(svg_text: str) -> str:
     encoded = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
     return f"data:image/svg+xml;base64,{encoded}"
@@ -757,6 +771,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--url", required=True)
     parser.add_argument("--svg", required=True)
     parser.add_argument("--html", required=True)
+    parser.add_argument("--online-png", default="")
+    parser.add_argument("--lan-png", default="")
     parser.add_argument("--ws-port", type=int, default=8765)
     parser.add_argument("--session-token", default="")
     parser.add_argument("--status-ws-url", default="")
@@ -769,9 +785,15 @@ def main() -> int:
     args = parse_args()
     svg_path = Path(args.svg).expanduser().resolve()
     html_path = Path(args.html).expanduser().resolve()
+    online_png_path = Path(args.online_png).expanduser().resolve() if args.online_png else None
+    lan_png_path = Path(args.lan_png).expanduser().resolve() if args.lan_png else None
 
     svg_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.parent.mkdir(parents=True, exist_ok=True)
+    if online_png_path:
+        online_png_path.parent.mkdir(parents=True, exist_ok=True)
+    if lan_png_path:
+        lan_png_path.parent.mkdir(parents=True, exist_ok=True)
 
     build_svg(args.url, svg_path)
     html_path.write_text(
@@ -786,6 +808,22 @@ def main() -> int:
         ),
         encoding="utf-8",
     )
+
+    online_url = args.online_url.strip()
+    lan_url = args.lan_url.strip()
+
+    if online_png_path:
+        if online_url:
+            build_png(online_url, online_png_path)
+        elif online_png_path.exists():
+            online_png_path.unlink()
+
+    if lan_png_path:
+        if lan_url:
+            build_png(lan_url, lan_png_path)
+        elif lan_png_path.exists():
+            lan_png_path.unlink()
+
     return 0
 
 

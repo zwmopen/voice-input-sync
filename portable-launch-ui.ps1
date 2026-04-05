@@ -17,6 +17,8 @@ $StatusFile = Join-Path $LogsDir "startup-status.json"
 $StartupLog = Join-Path $LogsDir "startup.log"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
+$QrHtmlFile = Join-Path $PackageDir "手机扫码打开.html"
+$QrWindowScript = Join-Path $BaseDir "portable-qr-window.ps1"
 $ServerRuntimeLog = Join-Path $BaseDir "logs\server-runtime.log"
 $LauncherMutexName = "Local\VoiceInputSyncPortableLauncher"
 $script:LauncherMutex = $null
@@ -124,6 +126,37 @@ function Invoke-ShellOpen {
         $resolvedTarget = $Target
         if (-not ($Target -match '^[a-zA-Z][a-zA-Z0-9+.-]*://')) {
             $resolvedTarget = (Resolve-Path -LiteralPath $Target).Path
+        }
+
+        $resolvedQrHtml = ""
+        try {
+            if (Test-Path $QrHtmlFile) {
+                $resolvedQrHtml = (Resolve-Path -LiteralPath $QrHtmlFile).Path
+            }
+        } catch {
+            $resolvedQrHtml = ""
+        }
+
+        if ($resolvedQrHtml -and $resolvedTarget -eq $resolvedQrHtml -and (Test-Path $QrWindowScript)) {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ProcessId -ne $PID -and
+                    $_.CommandLine -and
+                    $_.CommandLine -like '*portable-qr-window.ps1*'
+                } |
+                ForEach-Object {
+                    try {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                    } catch {
+                    }
+                }
+
+            Start-Process -FilePath (Get-Command powershell.exe).Source `
+                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $QrWindowScript) `
+                -WorkingDirectory $PackageDir `
+                -WindowStyle Hidden | Out-Null
+            Write-UiLog ("已打开扫码窗口: {0}" -f $QrWindowScript)
+            return $true
         }
 
         $psi = New-Object System.Diagnostics.ProcessStartInfo

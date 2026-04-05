@@ -124,6 +124,7 @@ Copy-Item (Join-Path $projectRoot "portable_http_server.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "server.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable-qr-window.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-tray.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-stop.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
