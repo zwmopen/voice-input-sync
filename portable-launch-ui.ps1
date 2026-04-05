@@ -556,7 +556,7 @@ function Start-BackendLaunch {
     Write-UiLog ("已拉起启动服务 PID={0}" -f $script:StartupProcess.Id)
 }
 
-function Arm-AutoMinimize {
+function Arm-AutoClose {
     param(
         [int]$MinimumVisibleSeconds = 8,
         [int]$PostSuccessSeconds = 6
@@ -576,7 +576,7 @@ function Arm-AutoMinimize {
     $script:CloseTimer.Stop()
     $script:CloseTimer.Interval = [TimeSpan]::FromSeconds($delaySeconds)
     $script:CloseTimer.Start()
-    Write-UiLog ("将在 {0} 秒后自动缩到任务栏。" -f $delaySeconds)
+    Write-UiLog ("将在 {0} 秒后自动关闭启动页。" -f $delaySeconds)
 }
 
 if (-not (Enter-LauncherMutex)) {
@@ -1048,7 +1048,7 @@ try {
     $closeTimer.Interval = [TimeSpan]::FromMilliseconds(10000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
-        Minimize-LauncherWindow
+        Close-LauncherWindow
     })
 
     $launchTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -1083,11 +1083,22 @@ try {
                 $script:CloseButton.Content = "暂时收起"
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
+                $openHandled = $false
+                if ($null -ne $status.PSObject.Properties["openHandled"]) {
+                    $openHandled = [bool]$status.openHandled
+                }
                 if (-not $script:SuccessSeenAt) {
                     $script:SuccessSeenAt = Get-Date
                     if (-not $NoAutoClose -and -not $script:AutoMinimizeArmed) {
                         $script:AutoMinimizeArmed = $true
-                        Arm-AutoMinimize
+                        if ($openHandled) {
+                            $script:CloseTimer.Stop()
+                            $script:CloseTimer.Interval = [TimeSpan]::FromMilliseconds(220)
+                            $script:CloseTimer.Start()
+                            Write-UiLog "扫码页已打开，启动页即将自动关闭。"
+                        } else {
+                            Arm-AutoClose
+                        }
                     }
                 }
                 $script:OpenButton.Visibility = "Visible"
