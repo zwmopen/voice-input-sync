@@ -24,6 +24,7 @@ $TrayMutex = $null
 $OwnsTrayMutex = $false
 $script:AllowWindowClose = $false
 $script:PopupVisible = $false
+$script:PopupShownAt = $null
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 
@@ -448,6 +449,7 @@ try {
     function Hide-CustomMenu {
         if ($popupWindow -and $script:PopupVisible) {
             $script:PopupVisible = $false
+            $script:PopupShownAt = $null
             $popupWindow.Hide()
         }
     }
@@ -465,6 +467,7 @@ try {
         $popupWindow.Left = $location.X
         $popupWindow.Top = $location.Y
         $script:PopupVisible = $true
+        $script:PopupShownAt = Get-Date
         if (-not $popupWindow.IsVisible) {
             $popupWindow.Show()
         }
@@ -539,11 +542,13 @@ try {
     $notifyIcon.Add_MouseClick({
         param($sender, $e)
 
-        if (
-            $e.Button -eq [System.Windows.Forms.MouseButtons]::Right -or
-            $e.Button -eq [System.Windows.Forms.MouseButtons]::Left
-        ) {
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
             Toggle-CustomMenu
+            return
+        }
+
+        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+            $openQrAction.Invoke()
         }
     })
 
@@ -552,6 +557,13 @@ try {
     })
 
     $popupWindow.Add_Deactivated({
+        if ($script:PopupShownAt) {
+            $elapsed = ((Get-Date) - $script:PopupShownAt).TotalMilliseconds
+            if ($elapsed -lt 450) {
+                return
+            }
+        }
+
         Hide-CustomMenu
     })
 
