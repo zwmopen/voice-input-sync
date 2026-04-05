@@ -37,41 +37,109 @@ def svg_to_data_uri(svg_text: str) -> str:
     return f"data:image/svg+xml;base64,{encoded}"
 
 
-def build_html(
+def build_access_card(
+    *,
+    card_id: str,
+    title: str,
+    subtitle: str,
     url: str,
+    active: bool,
+    featured: bool,
+    badge_text: str,
+    tone: str,
+    qr_src: str,
+) -> str:
+    tone_class = "accent" if tone == "accent" else "green"
+    copy_button = (
+        f'<button class="copy-pill" type="button" data-copy="{html.escape(card_id)}">复制地址</button>'
+        if active
+        else '<button class="copy-pill disabled" type="button" disabled>暂不可用</button>'
+    )
+    url_markup = html.escape(url) if active else "当前这次启动还没拿到互联网地址"
+    qr_markup = (
+        f'<img src="{html.escape(qr_src)}" alt="{html.escape(title)}二维码">'
+        if active
+        else '<div class="qr-placeholder">正在等待在线地址</div>'
+    )
+    card_class = "access-card featured" if featured else "access-card"
+
+    return f"""
+            <article class="{card_class}">
+                <div class="card-qr">
+                    <div class="card-badge {tone_class}">{html.escape(badge_text)}</div>
+                    {qr_markup}
+                </div>
+                <div class="card-main">
+                    <div class="card-head">
+                        <div>
+                            <h2>{html.escape(title)}</h2>
+                            <p class="card-subtitle">{html.escape(subtitle)}</p>
+                        </div>
+                        {copy_button}
+                    </div>
+                    <div class="address-box {'disabled' if not active else ''}" data-copy="{html.escape(card_id)}" tabindex="{0 if active else -1}" role="button" aria-label="复制{html.escape(title)}">
+                        <div class="address-label">手机打开地址</div>
+                        <div class="address-value" id="{html.escape(card_id)}Value">{url_markup}</div>
+                    </div>
+                </div>
+            </article>
+"""
+
+
+def build_html(
+    recommended_url: str,
     svg_filename: str,
     ws_port: int,
     session_token: str,
+    *,
     status_ws_url: str = "",
-    secondary_url: str = "",
+    online_url: str = "",
+    lan_url: str = "",
 ) -> str:
-    host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
+    host = recommended_url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
     ws_url = status_ws_url or f"ws://{host}:{ws_port}"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    main_qr_src = html.escape(svg_filename)
 
-    secondary_qr_markup = ""
-    secondary_address_markup = ""
-    if secondary_url:
-        secondary_qr_src = svg_to_data_uri(build_svg_text(secondary_url))
-        secondary_qr_markup = f"""
-                    <div class="qr-card">
-                        <div class="qr-chip secondary">局域网直连</div>
-                        <div class="qr-caption">自己手机热点 / 家里网络</div>
-                        <img src="{secondary_qr_src}" alt="局域网直连二维码">
-                    </div>
-"""
-        secondary_address_markup = f"""
-                <div class="item">
-                    <strong>局域网直连地址</strong>
-                    <div class="url-box secondary-url-box" id="secondaryUrlBox" role="button" tabindex="0" aria-label="点击复制局域网直连地址">
-                        <div class="url-head">
-                            <div class="url-label">本地地址</div>
-                            <button class="copy-pill" type="button" id="secondaryCopyButton">点击复制地址</button>
-                        </div>
-                        <div class="url-value">{html.escape(secondary_url)}</div>
-                    </div>
-                </div>
-"""
+    if recommended_url == online_url and online_url:
+        online_qr_src = main_qr_src
+    elif online_url:
+        online_qr_src = svg_to_data_uri(build_svg_text(online_url))
+    else:
+        online_qr_src = ""
+
+    if recommended_url == lan_url and lan_url:
+        lan_qr_src = main_qr_src
+    elif lan_url:
+        lan_qr_src = svg_to_data_uri(build_svg_text(lan_url))
+    else:
+        lan_qr_src = ""
+
+    online_featured = bool(online_url)
+    lan_featured = not online_featured and bool(lan_url)
+
+    online_card = build_access_card(
+        card_id="online",
+        title="互联网地址",
+        subtitle="不在同一局域网时优先用这个",
+        url=online_url,
+        active=bool(online_url),
+        featured=online_featured,
+        badge_text="推荐地址" if online_featured else "互联网地址",
+        tone="accent",
+        qr_src=online_qr_src,
+    )
+    lan_card = build_access_card(
+        card_id="lan",
+        title="局域网直连",
+        subtitle="自己手机热点 / 家里网络更适合",
+        url=lan_url,
+        active=bool(lan_url),
+        featured=lan_featured,
+        badge_text="当前可用" if lan_featured else "局域网直连",
+        tone="green",
+        qr_src=lan_qr_src,
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -111,14 +179,15 @@ def build_html(
         }}
 
         .shell {{
-            width: min(1220px, 100%);
+            width: min(1180px, 100%);
             margin: 0 auto;
             display: grid;
-            grid-template-columns: minmax(380px, 520px) minmax(360px, 1fr);
             gap: 24px;
         }}
 
-        .card {{
+        .hero,
+        .status-shell,
+        .access-shell {{
             background: var(--card);
             border-radius: 30px;
             box-shadow: var(--shadow-up);
@@ -143,83 +212,23 @@ def build_html(
             line-height: 1.08;
         }}
 
-        p {{
+        .hero p {{
             margin: 0;
             color: var(--muted);
             line-height: 1.8;
             font-size: 16px;
+            max-width: 860px;
         }}
 
-        .qr-wrap {{
-            margin-top: 20px;
-            border-radius: 26px;
-            padding: 22px;
-            background: var(--paper);
-            box-shadow: var(--shadow-inset);
-        }}
-
-        .qr-grid {{
+        .status-shell {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-        }}
-
-        .qr-card {{
-            padding: 16px;
-            border-radius: 22px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 246, 251, 0.92));
-            box-shadow: 10px 10px 22px rgba(170, 179, 190, 0.72), -10px -10px 22px rgba(255, 255, 255, 0.92);
-            text-align: center;
-        }}
-
-        .qr-chip {{
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 8px 14px;
-            border-radius: 999px;
-            background: var(--accent-soft);
-            color: var(--accent);
-            font-size: 13px;
-            font-weight: 800;
-        }}
-
-        .qr-chip.secondary {{
-            background: var(--green-soft);
-            color: var(--green);
-        }}
-
-        .qr-caption {{
-            margin: 10px 0 14px;
-            color: var(--muted);
-            font-size: 13px;
-            font-weight: 700;
-        }}
-
-        .qr-card img {{
-            width: min(100%, 260px);
-            height: auto;
-            display: block;
-            margin: 0 auto;
-            padding: 14px;
-            border-radius: 20px;
-            background: #fff;
-            box-shadow: 10px 10px 22px rgba(170, 179, 190, 0.72), -10px -10px 22px rgba(255, 255, 255, 0.92);
-        }}
-
-        .status-panel {{
-            margin-top: 18px;
-            padding: 18px;
-            border-radius: 22px;
-            background: var(--paper);
-            box-shadow: var(--shadow-inset);
+            gap: 14px;
         }}
 
         .status-label {{
             font-size: 13px;
             font-weight: 700;
             color: var(--muted);
-            margin-bottom: 10px;
         }}
 
         .status-button {{
@@ -241,7 +250,6 @@ def build_html(
         }}
 
         .status-note {{
-            margin-top: 12px;
             color: var(--muted);
             line-height: 1.75;
             font-size: 14px;
@@ -255,64 +263,142 @@ def build_html(
             color: var(--red);
         }}
 
-        .list {{
+        .access-shell {{
             display: grid;
-            gap: 12px;
+            gap: 16px;
         }}
 
-        .item {{
-            padding: 16px 18px;
-            border-radius: 18px;
-            background: var(--paper);
-            box-shadow: 10px 10px 20px rgba(176, 185, 197, 0.7), -10px -10px 20px rgba(255, 255, 255, 0.92);
-        }}
-
-        .item strong {{
-            display: block;
-            margin-bottom: 6px;
-            font-size: 15px;
-        }}
-
-        .url-box {{
-            margin-top: 18px;
+        .access-card {{
+            display: grid;
+            grid-template-columns: 220px minmax(0, 1fr);
+            gap: 18px;
             padding: 18px;
-            border-radius: 22px;
+            border-radius: 24px;
             background: var(--paper);
             box-shadow: var(--shadow-inset);
-            cursor: pointer;
         }}
 
-        .secondary-url-box {{
-            margin-top: 12px;
+        .access-card.featured {{
+            outline: 1px solid rgba(207, 126, 41, 0.15);
         }}
 
-        .url-head {{
-            display: flex;
+        .card-qr {{
+            display: grid;
+            gap: 12px;
+            align-content: start;
+        }}
+
+        .card-badge {{
+            display: inline-flex;
             align-items: center;
+            justify-content: center;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 800;
+            justify-self: start;
+        }}
+
+        .card-badge.accent {{
+            background: var(--accent-soft);
+            color: var(--accent);
+        }}
+
+        .card-badge.green {{
+            background: var(--green-soft);
+            color: var(--green);
+        }}
+
+        .card-qr img,
+        .qr-placeholder {{
+            width: 100%;
+            min-height: 190px;
+            display: grid;
+            place-items: center;
+            padding: 16px;
+            border-radius: 22px;
+            background: #fff;
+            box-shadow: 10px 10px 22px rgba(170, 179, 190, 0.72), -10px -10px 22px rgba(255, 255, 255, 0.92);
+        }}
+
+        .card-qr img {{
+            object-fit: contain;
+        }}
+
+        .qr-placeholder {{
+            color: var(--muted);
+            text-align: center;
+            line-height: 1.7;
+            font-size: 14px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 247, 251, 0.94));
+        }}
+
+        .card-main {{
+            display: grid;
+            gap: 14px;
+            align-content: start;
+        }}
+
+        .card-head {{
+            display: flex;
+            align-items: flex-start;
             justify-content: space-between;
             gap: 12px;
-            margin-bottom: 10px;
         }}
 
-        .url-label {{
-            font-size: 13px;
-            font-weight: 700;
-            color: #35567f;
+        .card-head h2 {{
+            margin: 0;
+            font-size: 24px;
+            line-height: 1.25;
+        }}
+
+        .card-subtitle {{
+            margin: 8px 0 0;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.7;
         }}
 
         .copy-pill {{
             border: none;
             border-radius: 999px;
-            padding: 8px 14px;
+            padding: 10px 16px;
             background: var(--paper);
             color: var(--accent);
             font-size: 13px;
             font-weight: 700;
             cursor: pointer;
             box-shadow: 6px 6px 12px rgba(176, 185, 197, 0.8), -6px -6px 12px rgba(255, 255, 255, 0.95);
+            white-space: nowrap;
         }}
 
-        .url-value {{
+        .copy-pill.disabled {{
+            color: #8794a3;
+            cursor: default;
+        }}
+
+        .address-box {{
+            padding: 16px 18px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.72);
+            box-shadow: 8px 8px 16px rgba(176, 185, 197, 0.58), -8px -8px 16px rgba(255, 255, 255, 0.9);
+            cursor: pointer;
+            outline: none;
+        }}
+
+        .address-box.disabled {{
+            cursor: default;
+            opacity: 0.8;
+        }}
+
+        .address-label {{
+            font-size: 13px;
+            font-weight: 700;
+            color: #35567f;
+            margin-bottom: 10px;
+        }}
+
+        .address-value {{
             word-break: break-all;
             font-size: 16px;
             line-height: 1.7;
@@ -321,7 +407,6 @@ def build_html(
         }}
 
         .meta {{
-            margin-top: 18px;
             font-size: 13px;
             color: #756b60;
         }}
@@ -348,8 +433,8 @@ def build_html(
             transform: translateX(-50%) translateY(0);
         }}
 
-        @media (max-width: 940px) {{
-            .shell {{
+        @media (max-width: 860px) {{
+            .access-card {{
                 grid-template-columns: 1fr;
             }}
         }}
@@ -359,12 +444,14 @@ def build_html(
                 padding: 16px;
             }}
 
-            .card {{
+            .hero,
+            .status-shell,
+            .access-shell {{
                 padding: 22px;
                 border-radius: 24px;
             }}
 
-            .url-head {{
+            .card-head {{
                 flex-direction: column;
                 align-items: stretch;
             }}
@@ -377,73 +464,34 @@ def build_html(
 </head>
 <body>
     <main class="shell">
-        <section class="card">
+        <section class="hero">
             <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
-            <h1>扫一个就能开始</h1>
-            <p>上面两个二维码分别对应在线地址和局域网直连地址。你可以按当前网络环境选择最顺手的那个。扫完以后，回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。</p>
+            <h1>两个入口，按你的网络来。</h1>
+            <p>互联网地址适合不在同一局域网时直接开。局域网直连更适合你自己手机热点给电脑，或者家里同一个热点。每一张卡右边就是对应地址，左边就是对应二维码。</p>
+        </section>
 
-            <div class="qr-wrap">
-                <div class="qr-grid">
-                    <div class="qr-card">
-                        <div class="qr-chip">推荐扫码地址</div>
-                        <div class="qr-caption">在线地址</div>
-                        <img src="{html.escape(svg_filename)}" alt="在线地址二维码">
-                    </div>
-{secondary_qr_markup}
-                </div>
-            </div>
-
-            <div class="status-panel">
-                <div class="status-label">连接状态</div>
-                <button class="status-button" type="button" id="connectionStatus">等待连接</button>
-                <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。输入成功或失败，也会在这里给你反馈。</div>
-            </div>
-
+        <section class="status-shell">
+            <div class="status-label">连接状态</div>
+            <button class="status-button" type="button" id="connectionStatus">等待连接</button>
+            <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。输入成功或失败，也会在这里给你反馈。</div>
             <div class="meta">生成时间：{generated_at}</div>
         </section>
 
-        <section class="card">
-            <div class="list">
-                <div class="item">
-                    <strong>手机打开地址</strong>
-                    <div class="url-box" id="urlBox" role="button" tabindex="0" aria-label="点击复制手机地址">
-                        <div class="url-head">
-                            <div class="url-label">推荐地址</div>
-                            <button class="copy-pill" type="button" id="copyButton">点击复制地址</button>
-                        </div>
-                        <div class="url-value">{html.escape(url)}</div>
-                    </div>
-                </div>
-{secondary_address_markup}
-                <div class="item">
-                    <strong>先做这一件事</strong>
-                    <span>在电脑上先把光标点到你真正要输入的位置。这个工具只负责把手机上的输入送过去，不会替你决定要输入到哪个框里。</span>
-                </div>
-
-                <div class="item">
-                    <strong>如果手机连上了但电脑没打字</strong>
-                    <span>回到绿色包根目录，双击“如果输入没反应-请用管理员启动.bat”。输入失败原因也会回传到这里和手机页。</span>
-                </div>
-
-                <div class="item">
-                    <strong>输入模式说明</strong>
-                    <span>手机页有“实时同步”和“整段同步”两种模式。输入法改写频繁时，改用整段同步会更稳。</span>
-                </div>
-            </div>
+        <section class="access-shell">
+{online_card}
+{lan_card}
         </section>
     </main>
 
-    <div class="toast" id="toast">地址已复制</div>
+    <div class="toast" id="toast">地址已复制。</div>
 
     <script>
-        const manualUrl = {json.dumps(url, ensure_ascii=False)};
-        const secondaryUrl = {json.dumps(secondary_url, ensure_ascii=False)};
+        const urls = {{
+            online: {json.dumps(online_url, ensure_ascii=False)},
+            lan: {json.dumps(lan_url, ensure_ascii=False)}
+        }};
         const statusWsUrl = {json.dumps(ws_url, ensure_ascii=False)};
         const sessionToken = {json.dumps(session_token, ensure_ascii=False)};
-        const urlBox = document.getElementById("urlBox");
-        const copyButton = document.getElementById("copyButton");
-        const secondaryUrlBox = document.getElementById("secondaryUrlBox");
-        const secondaryCopyButton = document.getElementById("secondaryCopyButton");
         const toast = document.getElementById("toast");
         const connectionStatus = document.getElementById("connectionStatus");
         const statusNote = document.getElementById("statusNote");
@@ -474,6 +522,11 @@ def build_html(
         }}
 
         async function copyText(text, successMessage, failureMessage) {{
+            if (!text) {{
+                showToast("当前这个地址还没准备好。");
+                return;
+            }}
+
             try {{
                 if (navigator.clipboard && window.isSecureContext) {{
                     await navigator.clipboard.writeText(text);
@@ -487,6 +540,29 @@ def build_html(
                 showToast(successMessage);
             }} else {{
                 showToast(failureMessage);
+            }}
+        }}
+
+        function wireCopy(cardId, successMessage, failureMessage) {{
+            const targets = document.querySelectorAll(`[data-copy="${{cardId}}"]`);
+            for (const target of targets) {{
+                if (target.classList.contains("disabled")) {{
+                    continue;
+                }}
+
+                const handler = (event) => {{
+                    if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") {{
+                        return;
+                    }}
+                    event.preventDefault();
+                    if (target.tagName === "BUTTON") {{
+                        event.stopPropagation();
+                    }}
+                    copyText(urls[cardId], successMessage, failureMessage);
+                }};
+
+                target.addEventListener("click", handler);
+                target.addEventListener("keydown", handler);
             }}
         }}
 
@@ -574,35 +650,8 @@ def build_html(
             }};
         }}
 
-        urlBox.addEventListener("click", () => {{
-            copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
-        }});
-
-        copyButton.addEventListener("click", (event) => {{
-            event.stopPropagation();
-            copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
-        }});
-
-        urlBox.addEventListener("keydown", (event) => {{
-            if (event.key === "Enter" || event.key === " ") {{
-                event.preventDefault();
-                copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
-            }}
-        }});
-
-        if (secondaryUrlBox) {{
-            secondaryUrlBox.addEventListener("click", () => {{
-                copyText(secondaryUrl, "局域网地址已复制。", "局域网地址复制失败。");
-            }});
-        }}
-
-        if (secondaryCopyButton) {{
-            secondaryCopyButton.addEventListener("click", (event) => {{
-                event.stopPropagation();
-                copyText(secondaryUrl, "局域网地址已复制。", "局域网地址复制失败。");
-            }});
-        }}
-
+        wireCopy("online", "互联网地址已复制。", "互联网地址复制失败。");
+        wireCopy("lan", "局域网地址已复制。", "局域网地址复制失败。");
         connectPresence();
     </script>
 </body>
@@ -618,7 +667,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ws-port", type=int, default=8765)
     parser.add_argument("--session-token", default="")
     parser.add_argument("--status-ws-url", default="")
-    parser.add_argument("--secondary-url", default="")
+    parser.add_argument("--online-url", default="")
+    parser.add_argument("--lan-url", default="")
     return parser.parse_args()
 
 
@@ -638,7 +688,8 @@ def main() -> int:
             args.ws_port,
             args.session_token,
             status_ws_url=args.status_ws_url,
-            secondary_url=args.secondary_url,
+            online_url=args.online_url.strip(),
+            lan_url=args.lan_url.strip(),
         ),
         encoding="utf-8",
     )

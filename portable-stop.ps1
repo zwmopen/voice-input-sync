@@ -117,6 +117,7 @@ function Get-LegacyCompanionProcesses {
     $patterns = @(
         '(?i)voice-input-sync.*\\client\.py(\s|$)',
         '(?i)voice-input-sync.*\\server\.py(\s|$)',
+        '(?i)voice-input-sync.*\\portable_http_server\.py(\s|$)',
         '(?i)voice-input-sync.*\\autostart\.ps1(\s|$)',
         $batPath,
         $vbsPath

@@ -120,6 +120,8 @@ foreach ($target in $buildTargets) {
 Copy-Item (Join-Path $projectRoot "mobile.html") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "favicon.svg") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "site.webmanifest") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable_http_server.py") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "server.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-tray.ps1") $runtimeRoot -Force

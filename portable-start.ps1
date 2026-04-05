@@ -54,6 +54,8 @@ $HttpExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncHttp"
 $WsExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncWs"
 $ClientExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncClient"
 $QrExe = Resolve-ManagedExecutablePath -BaseName "VoiceInputSyncQr"
+$HttpScript = Join-Path $BaseDir "portable_http_server.py"
+$WsScript = Join-Path $BaseDir "server.py"
 
 function Write-Log {
     param([string]$Message)
@@ -288,6 +290,40 @@ function Launch-PortableProcess {
     return $true
 }
 
+function Resolve-PythonExecutable {
+    $cmd = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return [string]$cmd.Source
+    }
+
+    return ""
+}
+
+function Launch-PythonScriptProcess {
+    param(
+        [string]$Name,
+        [string]$PythonPath,
+        [string]$ScriptPath,
+        [string[]]$Arguments = @()
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PythonPath) -or -not (Test-Path $PythonPath)) {
+        throw "Missing python executable: $PythonPath"
+    }
+    if (-not (Test-Path $ScriptPath)) {
+        throw "Missing script: $ScriptPath"
+    }
+
+    $fullArgs = @("-u", $ScriptPath) + $Arguments
+    Start-Process -FilePath $PythonPath `
+        -ArgumentList $fullArgs `
+        -WorkingDirectory $BaseDir `
+        -WindowStyle Hidden | Out-Null
+
+    Write-Log ("{0} python launch requested: {1}" -f $Name, ($fullArgs -join " "))
+    return $true
+}
+
 function Wait-ProcessReady {
     param(
         [string]$ExePath,
@@ -479,9 +515,8 @@ function Start-LocalTunnelProcess {
     Remove-Item -LiteralPath $StdErrPath -Force -ErrorAction SilentlyContinue
 
     if ($launcher.Name -like "npx*") {
-        $commandLine = ('"{0}" --yes localtunnel --port {1}' -f $launcher.Source, $Port)
-        Start-Process -FilePath "cmd.exe" `
-            -ArgumentList @("/c", $commandLine) `
+        Start-Process -FilePath $launcher.Source `
+            -ArgumentList @("--yes", "localtunnel", "--port", $Port) `
             -WorkingDirectory $BaseDir `
             -WindowStyle Hidden `
             -RedirectStandardOutput $StdOutPath `
@@ -494,16 +529,15 @@ function Start-LocalTunnelProcess {
             -RedirectStandardOutput $StdOutPath `
             -RedirectStandardError $StdErrPath | Out-Null
     } else {
-        $commandLine = ('"{0}" --port {1}' -f $launcher.Source, $Port)
-        Start-Process -FilePath "cmd.exe" `
-            -ArgumentList @("/c", $commandLine) `
+        Start-Process -FilePath $launcher.Source `
+            -ArgumentList @("--port", $Port) `
             -WorkingDirectory $BaseDir `
             -WindowStyle Hidden `
             -RedirectStandardOutput $StdOutPath `
             -RedirectStandardError $StdErrPath | Out-Null
     }
 
-    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 12
+    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 20
     if ([string]::IsNullOrWhiteSpace($url)) {
         $errPreview = ""
         if (Test-Path $StdErrPath) {
@@ -658,6 +692,7 @@ function Get-LegacyCompanionProcesses {
     $patterns = @(
         '(?i)voice-input-sync.*\\client\.py(\s|$)',
         '(?i)voice-input-sync.*\\server\.py(\s|$)',
+        '(?i)voice-input-sync.*\\portable_http_server\.py(\s|$)',
         '(?i)voice-input-sync.*\\autostart\.ps1(\s|$)',
         $batPath,
         $vbsPath
@@ -1069,25 +1104,25 @@ function Try-OpenPageWithCooldown {
 
 function Update-ShareArtifacts {
     param(
-        [string]$Url,
+        [string]$RecommendedUrl,
         [int]$WsPort,
         [string]$SessionToken = "",
         [string]$StatusWsUrl = "",
-        [string]$SecondaryUrl = "",
-        [string]$TertiaryUrl = ""
+        [string]$OnlineUrl = "",
+        [string]$LanUrl = ""
     )
 
-    if ([string]::IsNullOrWhiteSpace($Url)) {
+    if ([string]::IsNullOrWhiteSpace($RecommendedUrl)) {
         return $false
     }
 
-    Set-Content -Path $LatestUrlFile -Value $Url -Encoding UTF8
+    Set-Content -Path $LatestUrlFile -Value $RecommendedUrl -Encoding UTF8
 
     $qrOk = $false
     if (Test-Path $QrExe) {
         try {
             $qrArgs = @(
-                "--url", $Url,
+                "--url", $RecommendedUrl,
                 "--svg", $QrSvgFile,
                 "--html", $QrHtmlFile,
                 "--ws-port", $WsPort,
@@ -1096,9 +1131,7 @@ function Update-ShareArtifacts {
             if (-not [string]::IsNullOrWhiteSpace($StatusWsUrl)) {
                 $qrArgs += @("--status-ws-url", $StatusWsUrl)
             }
-            if (-not [string]::IsNullOrWhiteSpace($SecondaryUrl)) {
-                $qrArgs += @("--secondary-url", $SecondaryUrl)
-            }
+            $qrArgs += @("--online-url", $OnlineUrl, "--lan-url", $LanUrl)
             & $QrExe @qrArgs
             if ($LASTEXITCODE -eq 0 -and (Test-Path $QrHtmlFile) -and (Test-Path $QrSvgFile)) {
                 $qrOk = $true
@@ -1112,14 +1145,17 @@ function Update-ShareArtifacts {
         "语音输入同步"
         ""
         "优先用手机扫一扫电脑上的二维码。"
-        "如果扫码不方便，再在手机浏览器打开下面这个地址："
-        $Url
+        "当前推荐地址："
+        $RecommendedUrl
+        ""
+        "互联网地址："
+        $(if ([string]::IsNullOrWhiteSpace($OnlineUrl)) { "（当前这次启动还没拿到互联网地址）" } else { $OnlineUrl })
         ""
         "局域网直连地址："
-        $(if ([string]::IsNullOrWhiteSpace($SecondaryUrl)) { "（当前没有单独的备用地址）" } else { $SecondaryUrl })
+        $(if ([string]::IsNullOrWhiteSpace($LanUrl)) { "（当前没有单独的局域网地址）" } else { $LanUrl })
         ""
         "使用提醒"
-        "1. 热点或公共网络下，优先用上面的推荐地址"
+        "1. 互联网地址适合不在同一局域网时使用"
         "2. 如果你就是自己手机给自己电脑开热点，优先试上面的局域网直连地址"
         "3. 先把电脑光标点到你要输入的位置"
         "4. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
@@ -1127,7 +1163,7 @@ function Update-ShareArtifacts {
     Set-Content -Path $ShareUrlFile -Value $shareText -Encoding UTF8
 
     try {
-        Set-Clipboard -Value $Url
+        Set-Clipboard -Value $RecommendedUrl
     } catch {
         Write-Log "Clipboard skipped."
     }
@@ -1146,7 +1182,7 @@ try {
 
         $existingSession = Get-ExistingRunningSession
         if ($existingSession) {
-            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl -TertiaryUrl $existingSession.DirectIpUrl)
+            [void](Update-ShareArtifacts -RecommendedUrl $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -OnlineUrl $existingSession.PublicHttpUrl -LanUrl $existingSession.DirectUrl)
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
@@ -1201,11 +1237,23 @@ try {
         $forceFreshSession = $true
         Write-Log ("Startup will refresh public-network share targets: {0} {1} {2}" -f $networkProfile.Name, $networkProfile.InterfaceAlias, $networkProfile.IPAddress)
     }
+    $pythonExe = Resolve-PythonExecutable
+    $usePythonLanRuntime = $false
+    if (
+        $networkProfile -and
+        $networkProfile.NetworkCategory -eq "Public" -and
+        -not [string]::IsNullOrWhiteSpace($pythonExe) -and
+        (Test-Path $HttpScript) -and
+        (Test-Path $WsScript)
+    ) {
+        $usePythonLanRuntime = $true
+        Write-Log ("Public network detected, prefer Python LAN stack: {0}" -f $pythonExe)
+    }
 
     $existingSession = if ($forceFreshSession) { $null } else { Get-ExistingRunningSession }
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
-        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl -TertiaryUrl $existingSession.DirectIpUrl)
+        [void](Update-ShareArtifacts -RecommendedUrl $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -OnlineUrl $existingSession.PublicHttpUrl -LanUrl $existingSession.DirectUrl)
         $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
         $pageOpened = $false
         if ($shouldOpenPage) {
@@ -1229,8 +1277,13 @@ try {
     Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
 
     Show-Stage -Title "正在启动同步服务" -Detail ("网页端口 {0}，同步端口 {1}" -f $httpPort, $wsPort) -Emoji "⚙️" -Color "DarkCyan" -Percent 58
-    Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments @("--port", $httpPort) | Out-Null
-    Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
+    if ($usePythonLanRuntime) {
+        Launch-PythonScriptProcess -Name "http" -PythonPath $pythonExe -ScriptPath $HttpScript -Arguments @("--port", $httpPort) | Out-Null
+        Launch-PythonScriptProcess -Name "ws" -PythonPath $pythonExe -ScriptPath $WsScript -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
+    } else {
+        Launch-PortableProcess -Name "http" -ExePath $HttpExe -Arguments @("--port", $httpPort) | Out-Null
+        Launch-PortableProcess -Name "ws" -ExePath $WsExe -Arguments @("--port", $wsPort, "--session-token", $sessionToken) | Out-Null
+    }
     Launch-PortableProcess -Name "client" -ExePath $ClientExe -Arguments @("--ws-url", "ws://127.0.0.1:$wsPort", "--session-token", $sessionToken) | Out-Null
 
     $httpOk = Wait-PortReady -Port $httpPort -TimeoutSeconds 20
@@ -1261,7 +1314,7 @@ try {
     Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -DirectIpUrl $shareEndpoints.DirectIpUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
-    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken -StatusWsUrl $shareEndpoints.StatusWsUrl -SecondaryUrl $shareEndpoints.DirectUrl -TertiaryUrl $shareEndpoints.DirectIpUrl
+    $qrOk = Update-ShareArtifacts -RecommendedUrl $url -WsPort $wsPort -SessionToken $sessionToken -StatusWsUrl $shareEndpoints.StatusWsUrl -OnlineUrl $shareEndpoints.PublicHttpUrl -LanUrl $shareEndpoints.DirectUrl
     Write-Log "QR ready: $qrOk"
 
     Start-TrayResident | Out-Null
