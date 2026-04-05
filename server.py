@@ -266,6 +266,7 @@ def parse_args() -> argparse.Namespace:
 async def main(port: int, session_token: str) -> None:
     global SESSION_TOKEN
     SESSION_TOKEN = session_token.strip()
+    servers = []
 
     log("=" * 60)
     log("VoiceInputSync relay server ready")
@@ -273,8 +274,19 @@ async def main(port: int, session_token: str) -> None:
     log(f"listening on: ws://0.0.0.0:{port}")
     log(f"session token required: {bool(SESSION_TOKEN)}")
 
-    async with websockets.serve(handler, "0.0.0.0", port):
+    try:
+        servers.append(await websockets.serve(handler, "0.0.0.0", port))
+        try:
+            servers.append(await websockets.serve(handler, "::", port))
+            log(f"listening on: ws://[::]:{port}")
+        except OSError as error:
+            log(f"ipv6 listener skipped: {error}")
         await asyncio.Future()
+    finally:
+        for server in servers:
+            server.close()
+        for server in servers:
+            await server.wait_closed()
 
 
 if __name__ == "__main__":

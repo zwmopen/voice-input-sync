@@ -524,12 +524,14 @@ function Start-LocalTunnelProcess {
 function Get-ShareEndpoints {
     param(
         [string]$DirectUrl,
+        [string]$DirectIpUrl,
         [int]$HttpPort,
         [int]$WsPort,
         [string]$SessionToken
     )
 
     $statusWsUrl = "ws://127.0.0.1:$WsPort"
+    $preferredLanUrl = if (-not [string]::IsNullOrWhiteSpace($DirectUrl)) { $DirectUrl } else { $DirectIpUrl }
     $networkProfile = Get-PrimaryNetworkProfile
     $preferTunnel = $false
     if ($networkProfile -and $networkProfile.NetworkCategory -eq "Public") {
@@ -538,8 +540,9 @@ function Get-ShareEndpoints {
 
     if (-not $preferTunnel) {
         return [pscustomobject]@{
-            PrimaryUrl = $DirectUrl
+            PrimaryUrl = $preferredLanUrl
             DirectUrl = $DirectUrl
+            DirectIpUrl = $DirectIpUrl
             PublicHttpUrl = ""
             PublicWsUrl = ""
             StatusWsUrl = $statusWsUrl
@@ -557,8 +560,9 @@ function Get-ShareEndpoints {
     if ([string]::IsNullOrWhiteSpace($publicHttpUrl)) {
         Write-Log "Tunnel mode unavailable, fallback to direct LAN address."
         return [pscustomobject]@{
-            PrimaryUrl = $DirectUrl
+            PrimaryUrl = $preferredLanUrl
             DirectUrl = $DirectUrl
+            DirectIpUrl = $DirectIpUrl
             PublicHttpUrl = ""
             PublicWsUrl = ""
             StatusWsUrl = $statusWsUrl
@@ -570,6 +574,7 @@ function Get-ShareEndpoints {
     return [pscustomobject]@{
         PrimaryUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
         DirectUrl = $DirectUrl
+        DirectIpUrl = $DirectIpUrl
         PublicHttpUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
         PublicWsUrl = ""
         StatusWsUrl = $statusWsUrl
@@ -786,6 +791,7 @@ function Write-RuntimeConfig {
         [int]$WsPort,
         [string]$SessionToken = "",
         [string]$DirectUrl = "",
+        [string]$DirectIpUrl = "",
         [string]$PublicHttpUrl = "",
         [string]$PublicWsUrl = ""
     )
@@ -801,6 +807,7 @@ function Write-RuntimeConfig {
         wsPort = $WsPort
         sessionToken = $SessionToken
         directUrl = $DirectUrl
+        directIpUrl = $DirectIpUrl
         publicHttpUrl = $PublicHttpUrl
         publicWsUrl = $PublicWsUrl
         buildId = $buildId
@@ -926,7 +933,14 @@ function Get-ExistingRunningSession {
 
     if ([string]::IsNullOrWhiteSpace($url)) {
         $lanIp = Get-LanIp
-        $url = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+        $computerName = [Environment]::MachineName
+        if (-not [string]::IsNullOrWhiteSpace($computerName)) {
+            $url = "http://$computerName`:$httpPort/mobile.html"
+        } elseif ($lanIp) {
+            $url = "http://$lanIp`:$httpPort/mobile.html"
+        } else {
+            $url = "http://127.0.0.1:$httpPort/mobile.html"
+        }
     }
 
     $pageTarget = if (Test-Path $QrHtmlFile) { $QrHtmlFile } else { $url }
@@ -937,6 +951,10 @@ function Get-ExistingRunningSession {
     $directUrl = ""
     if ($null -ne $config.PSObject.Properties["directUrl"] -and $config.directUrl) {
         $directUrl = [string]$config.directUrl
+    }
+    $directIpUrl = ""
+    if ($null -ne $config.PSObject.Properties["directIpUrl"] -and $config.directIpUrl) {
+        $directIpUrl = [string]$config.directIpUrl
     }
     $publicHttpUrl = ""
     if ($null -ne $config.PSObject.Properties["publicHttpUrl"] -and $config.publicHttpUrl) {
@@ -954,6 +972,7 @@ function Get-ExistingRunningSession {
         PageTarget = $pageTarget
         SessionToken = $sessionToken
         DirectUrl = $directUrl
+        DirectIpUrl = $directIpUrl
         PublicHttpUrl = $publicHttpUrl
         PublicWsUrl = $publicWsUrl
     }
@@ -1057,7 +1076,8 @@ function Update-ShareArtifacts {
         [int]$WsPort,
         [string]$SessionToken = "",
         [string]$StatusWsUrl = "",
-        [string]$SecondaryUrl = ""
+        [string]$SecondaryUrl = "",
+        [string]$TertiaryUrl = ""
     )
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
@@ -1098,13 +1118,17 @@ function Update-ShareArtifacts {
         "如果扫码不方便，再在手机浏览器打开下面这个地址："
         $Url
         ""
-        "局域网直连地址："
+        "局域网电脑名地址："
         $(if ([string]::IsNullOrWhiteSpace($SecondaryUrl)) { "（当前没有单独的备用地址）" } else { $SecondaryUrl })
+        ""
+        "局域网 IP 备用地址："
+        $(if ([string]::IsNullOrWhiteSpace($TertiaryUrl)) { "（当前没有单独的 IP 备用地址）" } else { $TertiaryUrl })
         ""
         "使用提醒"
         "1. 热点或公共网络下，优先用上面的推荐地址"
-        "2. 先把电脑光标点到你要输入的位置"
-        "3. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
+        "2. 局域网直连时，优先试电脑名地址，不行再试 IP 地址"
+        "3. 先把电脑光标点到你要输入的位置"
+        "4. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
     ) -join "`r`n"
     Set-Content -Path $ShareUrlFile -Value $shareText -Encoding UTF8
 
@@ -1128,7 +1152,7 @@ try {
 
         $existingSession = Get-ExistingRunningSession
         if ($existingSession) {
-            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl)
+            [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl -TertiaryUrl $existingSession.DirectIpUrl)
             $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
             $pageOpened = $false
             if ($shouldOpenPage) {
@@ -1187,7 +1211,7 @@ try {
     $existingSession = if ($forceFreshSession) { $null } else { Get-ExistingRunningSession }
     if ($existingSession) {
         Show-Stage -Title "检测到已在运行" -Detail "这次直接复用现有会话，不再重启。" -Emoji "♻️" -Color "DarkCyan" -Percent 24
-        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl)
+        [void](Update-ShareArtifacts -Url $existingSession.Url -WsPort $existingSession.WsPort -SessionToken $existingSession.SessionToken -StatusWsUrl ("ws://127.0.0.1:{0}" -f $existingSession.WsPort) -SecondaryUrl $existingSession.DirectUrl -TertiaryUrl $existingSession.DirectIpUrl)
         $shouldOpenPage = $ForceOpenPage -or $OpenPageOnSuccess -or -not $Silent
         $pageOpened = $false
         if ($shouldOpenPage) {
@@ -1234,15 +1258,17 @@ try {
     }
 
     $lanIp = Get-LanIp
-    $directUrl = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    $computerName = [Environment]::MachineName
+    $directUrl = if ([string]::IsNullOrWhiteSpace($computerName)) { "" } else { "http://$computerName`:$httpPort/mobile.html" }
+    $directIpUrl = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
 
     Show-Stage -Title "正在准备手机地址" -Detail "热点网络下会自动补一个更稳的兼容地址。" -Emoji "🛰️" -Color "DarkCyan" -Percent 72
-    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
+    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
     $url = $shareEndpoints.PrimaryUrl
-    Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
+    Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -DirectIpUrl $shareEndpoints.DirectIpUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
 
     Show-Stage -Title "正在准备扫码页" -Detail "马上就能在手机上扫二维码进入。" -Emoji "🌐" -Color "DarkCyan" -Percent 78
-    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken -StatusWsUrl $shareEndpoints.StatusWsUrl -SecondaryUrl $shareEndpoints.DirectUrl
+    $qrOk = Update-ShareArtifacts -Url $url -WsPort $wsPort -SessionToken $sessionToken -StatusWsUrl $shareEndpoints.StatusWsUrl -SecondaryUrl $shareEndpoints.DirectUrl -TertiaryUrl $shareEndpoints.DirectIpUrl
     Write-Log "QR ready: $qrOk"
 
     Start-TrayResident | Out-Null

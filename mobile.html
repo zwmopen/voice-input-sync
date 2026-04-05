@@ -409,7 +409,7 @@
 
         const urlParams = new URLSearchParams(window.location.search);
         let sessionToken = urlParams.get("token") || "";
-        const runtimeConfig = { wsPort: 8765, sessionToken: "", directUrl: "", publicHttpUrl: "", publicWsUrl: "" };
+        const runtimeConfig = { wsPort: 8765, sessionToken: "", directUrl: "", directIpUrl: "", publicHttpUrl: "", publicWsUrl: "" };
 
         let ws = null;
         let desktopReady = false;
@@ -528,6 +528,9 @@
                 if (typeof data.directUrl === "string" && data.directUrl.trim()) {
                     runtimeConfig.directUrl = data.directUrl.trim();
                 }
+                if (typeof data.directIpUrl === "string" && data.directIpUrl.trim()) {
+                    runtimeConfig.directIpUrl = data.directIpUrl.trim();
+                }
                 if (typeof data.publicHttpUrl === "string" && data.publicHttpUrl.trim()) {
                     runtimeConfig.publicHttpUrl = data.publicHttpUrl.trim();
                 }
@@ -542,9 +545,8 @@
         function resolveWsUrl() {
             const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
             const currentHost = window.location.hostname;
-            const currentPort = window.location.port ? `:${window.location.port}` : "";
-
-            if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+            if (shouldUseHttpBridge()) {
+                const currentPort = window.location.port ? `:${window.location.port}` : "";
                 return `${wsProtocol}://${currentHost}${currentPort}/ws`;
             }
 
