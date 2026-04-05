@@ -220,6 +220,47 @@ def build_html(
             max-width: 860px;
         }}
 
+        .guide-steps {{
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }}
+
+        .guide-step {{
+            padding: 18px;
+            border-radius: 22px;
+            background: rgba(255, 255, 255, 0.72);
+            box-shadow: 8px 8px 16px rgba(176, 185, 197, 0.58), -8px -8px 16px rgba(255, 255, 255, 0.9);
+            display: grid;
+            gap: 8px;
+        }}
+
+        .guide-index {{
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            display: inline-grid;
+            place-items: center;
+            font-size: 14px;
+            font-weight: 800;
+            color: #fff;
+            background: linear-gradient(145deg, #d99347, #c06e18);
+            box-shadow: 6px 6px 12px rgba(192, 110, 24, 0.24), -6px -6px 12px rgba(255, 255, 255, 0.92);
+        }}
+
+        .guide-title {{
+            font-size: 17px;
+            font-weight: 800;
+            color: #203247;
+        }}
+
+        .guide-text {{
+            color: var(--muted);
+            line-height: 1.7;
+            font-size: 14px;
+        }}
+
         .status-shell {{
             display: grid;
             gap: 14px;
@@ -434,6 +475,10 @@ def build_html(
         }}
 
         @media (max-width: 860px) {{
+            .guide-steps {{
+                grid-template-columns: 1fr;
+            }}
+
             .access-card {{
                 grid-template-columns: 1fr;
             }}
@@ -466,8 +511,25 @@ def build_html(
     <main class="shell">
         <section class="hero">
             <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
-            <h1>两个入口，按你的网络来。</h1>
-            <p>互联网地址适合不在同一局域网时直接开。局域网直连更适合你自己手机热点给电脑，或者家里同一个热点。每一张卡右边就是对应地址，左边就是对应二维码。</p>
+            <h1>先扫码，再点中输入框，就能直接输入。</h1>
+            <p>互联网地址适合任何网络直接打开。局域网直连更适合你自己手机热点给电脑，或者家里同一个 Wi-Fi。每张卡里的二维码和地址是一一对应的，选一个能打开的入口就行。</p>
+            <div class="guide-steps">
+                <div class="guide-step">
+                    <div class="guide-index">1</div>
+                    <div class="guide-title">扫码或打开地址</div>
+                    <div class="guide-text">优先试互联网地址；如果你和电脑在同一个热点或 Wi-Fi，也可以直接用局域网直连。</div>
+                </div>
+                <div class="guide-step">
+                    <div class="guide-index">2</div>
+                    <div class="guide-title">看到已连接</div>
+                    <div class="guide-text">手机打开后，电脑这里会从“等待连接”变成“已连接”，说明这次连接已经打通。</div>
+                </div>
+                <div class="guide-step">
+                    <div class="guide-index">3</div>
+                    <div class="guide-title">回电脑点输入框</div>
+                    <div class="guide-text">回到电脑，把光标点进你真正要输入的地方，然后就可以直接说话或打字了。</div>
+                </div>
+            </div>
         </section>
 
         <section class="status-shell">

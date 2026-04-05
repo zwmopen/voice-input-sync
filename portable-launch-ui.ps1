@@ -22,7 +22,9 @@ $LauncherMutexName = "Local\VoiceInputSyncPortableLauncher"
 $script:LauncherMutex = $null
 $script:OwnsLauncherMutex = $false
 $script:AnimationTick = 0
-$script:AutoCloseArmed = $false
+$script:AutoMinimizeArmed = $false
+$script:AllowWindowClose = $false
+$script:MainWindow = $null
 $script:CurrentUrl = ""
 $script:CurrentTarget = ""
 $script:CurrentState = "running"
@@ -342,6 +344,24 @@ function Set-ProgressTarget {
     }
 }
 
+function Minimize-LauncherWindow {
+    if (-not $script:MainWindow) {
+        return
+    }
+
+    if ($script:MainWindow.WindowState -eq [System.Windows.WindowState]::Minimized) {
+        return
+    }
+
+    try {
+        $script:MainWindow.ShowInTaskbar = $true
+        $script:MainWindow.WindowState = [System.Windows.WindowState]::Minimized
+        Write-UiLog "Launcher minimized to taskbar."
+    } catch {
+        Write-UiLog ("Minimize failed: " + $_.Exception.Message)
+    }
+}
+
 if (-not (Enter-LauncherMutex)) {
     exit 0
 }
@@ -366,8 +386,9 @@ try {
         Width="980"
         Height="640"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="NoResize"
+        ResizeMode="CanMinimize"
         Background="#EDF2F7"
+        ShowInTaskbar="True"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
     <Grid>
@@ -626,8 +647,8 @@ try {
                                     Margin="0,0,12,0"
                                     Visibility="Collapsed"/>
                             <Button x:Name="CloseButton"
-                                    Content="&#x5173;&#x95ED;"
-                                    Width="90"
+                                    Content="&#x6700;&#x5C0F;&#x5316;"
+                                    Width="110"
                                     Height="44"/>
                         </StackPanel>
                     </Grid>
@@ -640,6 +661,7 @@ try {
 
     $reader = New-Object System.Xml.XmlNodeReader $xaml
     $window = [Windows.Markup.XamlReader]::Load($reader)
+    $script:MainWindow = $window
 
     if (Test-Path $IconPath) {
         try {
@@ -707,7 +729,24 @@ try {
     })
 
     $script:CloseButton.Add_Click({
-        $window.Close()
+        if ($script:CurrentState -eq "error") {
+            $script:AllowWindowClose = $true
+            $window.Close()
+            return
+        }
+
+        Minimize-LauncherWindow
+    })
+
+    $window.Add_Closing({
+        param($sender, $e)
+
+        if ($script:AllowWindowClose -or $script:CurrentState -eq "error") {
+            return
+        }
+
+        $e.Cancel = $true
+        Minimize-LauncherWindow
     })
 
     $animationTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -739,10 +778,10 @@ try {
     })
 
     $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $closeTimer.Interval = [TimeSpan]::FromMilliseconds(5000)
+    $closeTimer.Interval = [TimeSpan]::FromMilliseconds(10000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
-        $window.Close()
+        Minimize-LauncherWindow
     })
 
     $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -765,10 +804,15 @@ try {
                 Set-BadgeState -State "success"
                 Update-Chips -State "success" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
+                $script:CloseButton.Content = Get-Text @(0x6700,0x5C0F,0x5316)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 if (-not $script:SuccessSeenAt) {
                     $script:SuccessSeenAt = Get-Date
+                    if (-not $NoAutoClose -and -not $script:AutoMinimizeArmed) {
+                        $script:AutoMinimizeArmed = $true
+                        $closeTimer.Start()
+                    }
                 }
                 $script:OpenButton.Visibility = "Visible"
                 if (-not [string]::IsNullOrWhiteSpace($script:CurrentUrl)) {
@@ -794,12 +838,7 @@ try {
                     $remoteText = (($connectionInsight.ExternalIps | Select-Object -First 3) -join " / ")
                     $script:TipText.Text = Get-Text @(0x5DF2,0x7ECF,0x68C0,0x6D4B,0x5230,0x624B,0x673A,0x6216,0x5176,0x4ED6,0x8BBE,0x5907,0x6253,0x5230,0x8FD9,0x53F0,0x7535,0x8111,0x3002)
                     $script:FooterText.Text = (Get-Text @(0x5916,0x90E8,0x8BBE,0x5907,0x6765,0x6E90,0xFF1A)) + $remoteText
-                    if (-not $NoAutoClose -and -not $script:AutoCloseArmed -and -not $reuseSession) {
-                        $script:AutoCloseArmed = $true
-                        $closeTimer.Start()
-                    }
                 } else {
-                    $script:AutoCloseArmed = $false
                     $networkSummary = if ($networkInfo) {
                         (Get-Text @(0x5F53,0x524D,0x7F51,0x7EDC,0xFF1A)) + ("{0} / {1} / {2}" -f $networkInfo.InterfaceAlias, $networkInfo.NetworkCategory, $networkInfo.IPv4)
                     } elseif (-not [string]::IsNullOrWhiteSpace($localIp)) {
@@ -832,6 +871,7 @@ try {
                 Set-BadgeState -State "error"
                 Update-Chips -State "error" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
+                $script:CloseButton.Content = Get-Text @(0x5173,0x95ED)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 $script:FooterText.Text = [string]$status.detail
@@ -844,6 +884,7 @@ try {
             Set-BadgeState -State "running"
             Update-Chips -State "running" -Percent $percent
             Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
+            $script:CloseButton.Content = Get-Text @(0x6700,0x5C0F,0x5316)
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
             }
