@@ -14,6 +14,7 @@ $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $StartupLog = Join-Path $LogsDir "startup.log"
 $ServerRuntimeLog = Join-Path $BaseDir "logs\server-runtime.log"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
+$HeaderIconPath = Join-Path $BaseDir "assets\voice-sync-icon.png"
 $LanQrPngFile = Join-Path $PackageDir "qr-lan.png"
 $OnlineQrPngFile = Join-Path $PackageDir "qr-online.png"
 
@@ -189,15 +190,12 @@ function Set-CardUi {
     if ($AccentColor -eq "#4DB57C") {
         $softColor = "#E7F3EC"
         $textColor = "#278659"
-        $featuredColor = "#F6FBF8"
     } elseif ($AccentColor -eq "#35567F") {
         $softColor = "#EAF1F8"
         $textColor = "#244A73"
-        $featuredColor = "#F4F8FC"
     } else {
         $softColor = "#F5E7D1"
         $textColor = "#C87720"
-        $featuredColor = "#FBF6EF"
     }
 
     $TitleText.Text = $Title
@@ -206,10 +204,10 @@ function Set-CardUi {
     $BadgeText.Foreground = New-Brush $textColor
     $BadgeText.Parent.Background = New-Brush $softColor
 
-    $Card.BorderBrush = if ($Featured) { New-Brush $AccentColor } else { New-Brush "#D8E0E9" }
-    $Card.Background = if ($Featured) { New-Brush $featuredColor } else { New-Brush "#EDF2F7" }
-    $CopyButton.Background = New-Brush $softColor
-    $CopyButton.Foreground = New-Brush $textColor
+    $Card.BorderBrush = if ($Featured) { New-Brush "#E5C89C" } else { New-Brush "#D8E0E9" }
+    $Card.Background = if ($Featured) { New-Brush "#F7FAFD" } else { New-Brush "#F2F6FA" }
+    $CopyButton.Background = New-Brush "#F5E7D1"
+    $CopyButton.Foreground = New-Brush "#C87720"
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
         $AddressText.Text = "当前还没有可用地址"
@@ -250,10 +248,10 @@ function Set-StatusUi {
         return
     }
 
-    $script:StatusPill.Background = New-Brush "#F5E7D1"
-    $script:StatusDot.Fill = New-Brush "#D07F2A"
+    $script:StatusPill.Background = New-Brush "#E7EDF4"
+    $script:StatusDot.Fill = New-Brush "#7E8D9D"
     $script:StatusText.Text = "未连接"
-    $script:StatusText.Foreground = New-Brush "#D07F2A"
+    $script:StatusText.Foreground = New-Brush "#4E6278"
     $script:StatusHintText.Text = "扫码后，这里会自动变成已连接。"
 }
 
@@ -261,28 +259,58 @@ function Set-StatusUi {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="语音输入同步 · 扫码连接"
-        Width="1080"
-        Height="790"
+        Width="1088"
+        Height="760"
         MinWidth="980"
-        MinHeight="730"
+        MinHeight="710"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="CanMinimize"
-        Background="#EDF2F7"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Background="#EEF3F8"
         ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
     <Window.Resources>
+        <Style x:Key="TitleButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Margin" Value="0,0,0,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="#395576"/>
+            <Setter Property="Background" Value="#EAF1F8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="14">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10"
+                                                  ShadowDepth="4"
+                                                  Direction="270"
+                                                  Opacity="0.12"
+                                                  Color="#9FB1C4"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="GuideCardStyle" TargetType="Border">
-            <Setter Property="Padding" Value="18,16"/>
+            <Setter Property="Padding" Value="14,11"/>
             <Setter Property="Margin" Value="0,0,14,0"/>
-            <Setter Property="CornerRadius" Value="22"/>
-            <Setter Property="Background" Value="#F4F7FB"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Background" Value="#F6F9FC"/>
             <Setter Property="BorderBrush" Value="#DCE4ED"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
         <Style x:Key="CopyButtonStyle" TargetType="Button">
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Margin" Value="0,14,0,0"/>
+            <Setter Property="Height" Value="42"/>
+            <Setter Property="Margin" Value="0,12,0,0"/>
             <Setter Property="Padding" Value="18,0"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -313,8 +341,8 @@ function Set-StatusUi {
     <Grid>
         <Grid.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                <GradientStop Color="#EDF2F7" Offset="0"/>
-                <GradientStop Color="#DDE4EC" Offset="1"/>
+                <GradientStop Color="#EEF3F8" Offset="0"/>
+                <GradientStop Color="#DEE6EE" Offset="1"/>
             </LinearGradientBrush>
         </Grid.Background>
 
@@ -323,35 +351,94 @@ function Set-StatusUi {
                  Margin="-60,-110,0,0"
                  HorizontalAlignment="Left"
                  VerticalAlignment="Top"
-                 Fill="#22D07F2A"/>
+                 Fill="#18AFC2D5"/>
         <Ellipse Width="240"
                  Height="240"
                  Margin="0,-70,-40,0"
                  HorizontalAlignment="Right"
                  VerticalAlignment="Top"
-                 Fill="#1B5D88C2"/>
+                 Fill="#1499ADC6"/>
 
-        <Border Margin="26"
+        <Border Margin="16"
                 CornerRadius="34"
-                Background="#E7ECF2"
+                Background="#E8EEF4"
                 BorderBrush="#F7FAFD"
                 BorderThickness="1">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="34" ShadowDepth="16" Direction="315" Color="#99A8B8" Opacity="0.32"/>
             </Border.Effect>
 
-            <Grid Margin="28">
+            <Grid Margin="20">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="14"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0"
-                        CornerRadius="30"
-                        Background="#F0F5FA"
+                        CornerRadius="24"
+                        Background="#F3F7FB"
+                        BorderBrush="#F9FBFE"
+                        BorderThickness="1"
+                        Padding="14,10">
+                    <Grid x:Name="TitleBar" Height="40">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="40"
+                                Height="40"
+                                CornerRadius="14"
+                                Background="#F4F8FC">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="10"
+                                                  ShadowDepth="4"
+                                                  Direction="270"
+                                                  Opacity="0.12"
+                                                  Color="#A5B4C2"/>
+                            </Border.Effect>
+                            <Image x:Name="HeaderIcon"
+                                   Width="22"
+                                   Height="22"
+                                   Stretch="Uniform"/>
+                        </Border>
+                        <StackPanel Margin="12,0,0,0">
+                            <TextBlock Text="语音输入同步"
+                                       FontSize="18"
+                                       FontWeight="Bold"
+                                       Foreground="#213244"/>
+                            <TextBlock Text="扫码连接"
+                                       Margin="0,2,0,0"
+                                       FontSize="12.5"
+                                       Foreground="#778597"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <Button x:Name="HideWindowButton"
+                                Style="{StaticResource TitleButtonStyle}"
+                                Content="&#xE921;"/>
+                        <Button x:Name="CloseWindowButton"
+                                Margin="10,0,0,0"
+                                Style="{StaticResource TitleButtonStyle}"
+                                Background="#F5E7D1"
+                                Foreground="#C87720"
+                                Content="&#xE8BB;"/>
+                    </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="2"
+                        CornerRadius="28"
+                        Background="#F4F8FC"
                         BorderBrush="#F8FBFF"
                         BorderThickness="1"
-                        Padding="24,22">
+                        Padding="24,20">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="20"
                                           ShadowDepth="8"
@@ -366,7 +453,7 @@ function Set-StatusUi {
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="250"/>
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Row="0" Grid.Column="0">
@@ -380,14 +467,14 @@ function Set-StatusUi {
                                            Foreground="#C87720"/>
                             </Border>
                             <TextBlock Text="先扫局域网，连上后回电脑点中输入框。"
-                                       Margin="0,16,0,0"
-                                       FontSize="31"
+                                       Margin="0,14,0,0"
+                                       FontSize="28"
                                        FontWeight="Bold"
                                        Foreground="#213244"
                                        TextWrapping="Wrap"/>
-                            <TextBlock Text="上面先放局域网直连，下面保留互联网备用。两张二维码和地址一一对应，优先走最短那条路。"
-                                       Margin="0,12,0,0"
-                                       FontSize="16"
+                            <TextBlock Text="上面先试局域网直连，下面保留互联网备用。连上后回电脑点中真正要输入的位置。"
+                                       Margin="0,10,0,0"
+                                       FontSize="15"
                                        Foreground="#667687"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
@@ -396,27 +483,28 @@ function Set-StatusUi {
                                     Grid.Column="1"
                                     HorizontalAlignment="Right">
                             <Border x:Name="StatusPill"
-                                    Padding="16,10"
+                                    Padding="14,8"
                                     CornerRadius="999"
-                                    Background="#F5E7D1">
+                                    Background="#E7EDF4"
+                                    HorizontalAlignment="Right">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse x:Name="StatusDot"
-                                             Width="10"
-                                             Height="10"
+                                             Width="8"
+                                             Height="8"
                                              Margin="0,0,8,0"
                                              VerticalAlignment="Center"
-                                             Fill="#D07F2A"/>
+                                             Fill="#7E8D9D"/>
                                     <TextBlock x:Name="StatusText"
                                                Text="未连接"
-                                               FontSize="15"
+                                               FontSize="14"
                                                FontWeight="Bold"
-                                               Foreground="#D07F2A"/>
+                                               Foreground="#4E6278"/>
                                 </StackPanel>
                             </Border>
                             <TextBlock x:Name="StatusHintText"
-                                       Width="240"
-                                       Margin="0,10,0,0"
-                                       FontSize="13.5"
+                                       Width="230"
+                                       Margin="0,9,0,0"
+                                       FontSize="12.8"
                                        Foreground="#6B7A8B"
                                        TextAlignment="Right"
                                        TextWrapping="Wrap"/>
@@ -424,24 +512,24 @@ function Set-StatusUi {
 
                         <UniformGrid Grid.Row="1"
                                      Grid.ColumnSpan="2"
-                                     Margin="0,22,0,0"
+                                     Margin="0,18,0,0"
                                      Columns="3">
                             <Border Style="{StaticResource GuideCardStyle}">
                                 <TextBlock Text="1 先扫局域网"
-                                           FontSize="15"
+                                           FontSize="14"
                                            FontWeight="SemiBold"
                                            Foreground="#274160"/>
                             </Border>
                             <Border Style="{StaticResource GuideCardStyle}">
                                 <TextBlock Text="2 等这里变已连接"
-                                           FontSize="15"
+                                           FontSize="14"
                                            FontWeight="SemiBold"
                                            Foreground="#274160"/>
                             </Border>
                             <Border Margin="0"
                                     Style="{StaticResource GuideCardStyle}">
                                 <TextBlock Text="3 回电脑点输入框"
-                                           FontSize="15"
+                                           FontSize="14"
                                            FontWeight="SemiBold"
                                            Foreground="#274160"/>
                             </Border>
@@ -449,10 +537,10 @@ function Set-StatusUi {
                     </Grid>
                 </Border>
 
-                <Grid Grid.Row="1" Margin="0,24,0,0">
+                <Grid Grid.Row="3" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="16"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
@@ -460,8 +548,8 @@ function Set-StatusUi {
                             Grid.Column="0"
                             Padding="22"
                             CornerRadius="28"
-                            Background="#FBF6EF"
-                            BorderBrush="#D07F2A"
+                            Background="#F4F8FC"
+                            BorderBrush="#E5C89C"
                             BorderThickness="1">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="18"
@@ -701,6 +789,10 @@ if (Test-Path $IconPath) {
     }
 }
 
+$titleBar = $window.FindName("TitleBar")
+$headerIcon = $window.FindName("HeaderIcon")
+$hideWindowButton = $window.FindName("HideWindowButton")
+$closeWindowButton = $window.FindName("CloseWindowButton")
 $script:StatusPill = $window.FindName("StatusPill")
 $script:StatusDot = $window.FindName("StatusDot")
 $script:StatusText = $window.FindName("StatusText")
@@ -731,6 +823,13 @@ $copyToastTimer.Add_Tick({
     $copyToast.Visibility = "Collapsed"
 })
 
+if (Test-Path $HeaderIconPath) {
+    $headerBitmap = Load-BitmapImage -Path $HeaderIconPath
+    if ($headerBitmap) {
+        $headerIcon.Source = $headerBitmap
+    }
+}
+
 function Show-CopyToast {
     param([string]$Message)
 
@@ -754,6 +853,21 @@ $onlineCopyButton.Add_Click({
         $script:StatusHintText.Text = "互联网地址已复制，可以直接发到手机。"
         Show-CopyToast "已复制互联网地址"
     }
+})
+
+$titleBar.Add_MouseLeftButtonDown({
+    try {
+        $window.DragMove()
+    } catch {
+    }
+})
+
+$hideWindowButton.Add_Click({
+    $window.Hide()
+})
+
+$closeWindowButton.Add_Click({
+    $window.Close()
 })
 
 function Sync-WindowState {
