@@ -186,14 +186,26 @@ function Set-CardUi {
         [string]$AccentColor
     )
 
+    if ($AccentColor -eq "#4DB57C") {
+        $softColor = "#E7F3EC"
+        $textColor = "#278659"
+        $featuredColor = "#F6FBF8"
+    } else {
+        $softColor = "#F5E7D1"
+        $textColor = "#C87720"
+        $featuredColor = "#FBF6EF"
+    }
+
     $TitleText.Text = $Title
     $SubtitleText.Text = $Subtitle
     $BadgeText.Text = $BadgeLabel
-    $BadgeText.Foreground = New-Brush "#FFFFFF"
-    $BadgeText.Parent.Background = New-Brush $AccentColor
+    $BadgeText.Foreground = New-Brush $textColor
+    $BadgeText.Parent.Background = New-Brush $softColor
 
     $Card.BorderBrush = if ($Featured) { New-Brush $AccentColor } else { New-Brush "#D8E0E9" }
-    $Card.Background = if ($Featured) { New-Brush "#F7FAFD" } else { New-Brush "#EDF2F7" }
+    $Card.Background = if ($Featured) { New-Brush $featuredColor } else { New-Brush "#EDF2F7" }
+    $CopyButton.Background = New-Brush $softColor
+    $CopyButton.Foreground = New-Brush $textColor
 
     if ([string]::IsNullOrWhiteSpace($Url)) {
         $AddressText.Text = "当前还没有可用地址"
@@ -226,31 +238,74 @@ function Set-StatusUi {
     )
 
     if ($Connected) {
-        $script:StatusPill.Background = New-Brush "#4DB57C"
+        $script:StatusPill.Background = New-Brush "#E7F3EC"
+        $script:StatusDot.Fill = New-Brush "#4DB57C"
         $script:StatusText.Text = "已连接"
-        $script:StatusHintText.Text = if ($RemoteList) { "手机已经连上，来源：" + $RemoteList } else { "手机已经连上，现在回电脑点输入框就能直接输入。" }
+        $script:StatusText.Foreground = New-Brush "#278659"
+        $script:StatusHintText.Text = "已连接，现在回电脑点中输入框就能直接输入。"
         return
     }
 
-    $script:StatusPill.Background = New-Brush "#D07F2A"
-    $script:StatusText.Text = "等待连接"
-    $script:StatusHintText.Text = "先扫上面的局域网码；手机打开后，再回电脑点中输入框。"
+    $script:StatusPill.Background = New-Brush "#F5E7D1"
+    $script:StatusDot.Fill = New-Brush "#D07F2A"
+    $script:StatusText.Text = "未连接"
+    $script:StatusText.Foreground = New-Brush "#D07F2A"
+    $script:StatusHintText.Text = "扫码后，这里会自动变成已连接。"
 }
 
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="语音输入同步 · 扫码连接"
-        Width="1120"
-        Height="840"
+        Width="1080"
+        Height="790"
         MinWidth="980"
-        MinHeight="760"
+        MinHeight="730"
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize"
         Background="#EDF2F7"
         ShowInTaskbar="True"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
+    <Window.Resources>
+        <Style x:Key="GuideCardStyle" TargetType="Border">
+            <Setter Property="Padding" Value="18,16"/>
+            <Setter Property="Margin" Value="0,0,14,0"/>
+            <Setter Property="CornerRadius" Value="22"/>
+            <Setter Property="Background" Value="#F4F7FB"/>
+            <Setter Property="BorderBrush" Value="#DCE4ED"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style x:Key="CopyButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Margin" Value="0,14,0,0"/>
+            <Setter Property="Padding" Value="18,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="18">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="14"
+                                                  ShadowDepth="5"
+                                                  Direction="270"
+                                                  Opacity="0.18"
+                                                  Color="#A5B2BF"/>
+                            </Border.Effect>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.Background>
             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -258,6 +313,19 @@ function Set-StatusUi {
                 <GradientStop Color="#DDE4EC" Offset="1"/>
             </LinearGradientBrush>
         </Grid.Background>
+
+        <Ellipse Width="280"
+                 Height="280"
+                 Margin="-60,-110,0,0"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Top"
+                 Fill="#22D07F2A"/>
+        <Ellipse Width="240"
+                 Height="240"
+                 Margin="0,-70,-40,0"
+                 HorizontalAlignment="Right"
+                 VerticalAlignment="Top"
+                 Fill="#184DB57C"/>
 
         <Border Margin="26"
                 CornerRadius="34"
@@ -271,115 +339,142 @@ function Set-StatusUi {
             <Grid Margin="28">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                <Border Grid.Row="0"
+                        CornerRadius="30"
+                        Background="#F0F5FA"
+                        BorderBrush="#F8FBFF"
+                        BorderThickness="1"
+                        Padding="24,22">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="20"
+                                          ShadowDepth="8"
+                                          Direction="270"
+                                          Color="#B1BFCC"
+                                          Opacity="0.16"/>
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel>
-                        <Border Width="80"
-                                Height="8"
-                                Margin="0,0,0,16"
-                                HorizontalAlignment="Left"
-                                Background="#D07F2A"
-                                CornerRadius="8"/>
-                        <TextBlock Text="语音输入同步 · 手机扫码连接"
-                                   FontSize="34"
-                                   FontWeight="Bold"
-                                   Foreground="#213244"/>
-                        <TextBlock Text="局域网优先，互联网备用。手机打开后，回电脑点中输入框就能直接输入。"
-                                   Margin="0,12,0,0"
-                                   FontSize="17"
-                                   Foreground="#647384"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                        <Border x:Name="StatusPill"
-                                Padding="20,10"
-                                CornerRadius="18"
-                                Background="#D07F2A">
-                            <TextBlock x:Name="StatusText"
-                                       Text="等待连接"
-                                       FontSize="18"
+                        <StackPanel Grid.Row="0" Grid.Column="0">
+                            <Border HorizontalAlignment="Left"
+                                    Padding="12,6"
+                                    CornerRadius="999"
+                                    Background="#F5E7D1">
+                                <TextBlock Text="语音输入同步 · 手机扫码连接"
+                                           FontSize="13"
+                                           FontWeight="Bold"
+                                           Foreground="#C87720"/>
+                            </Border>
+                            <TextBlock Text="先扫局域网，连上后回电脑点中输入框。"
+                                       Margin="0,16,0,0"
+                                       FontSize="31"
                                        FontWeight="Bold"
-                                       Foreground="White"/>
-                        </Border>
-                        <TextBlock x:Name="StatusHintText"
-                                   Width="290"
-                                   Margin="0,12,0,0"
-                                   TextAlignment="Right"
-                                   FontSize="14"
-                                   Foreground="#667687"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Grid>
+                                       Foreground="#213244"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="上面先放局域网直连，下面保留互联网备用。两张二维码和地址一一对应，优先走最短那条路。"
+                                       Margin="0,12,0,0"
+                                       FontSize="16"
+                                       Foreground="#667687"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
 
-                <UniformGrid Grid.Row="1"
-                             Margin="0,24,0,0"
-                             Columns="3">
-                    <Border Margin="0,0,14,0"
-                            Padding="18,14"
-                            CornerRadius="20"
-                            Background="#F4F7FB"
-                            BorderBrush="#DCE4ED"
-                            BorderThickness="1">
-                        <TextBlock Text="1 先扫局域网二维码"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
-                                   Foreground="#274160"/>
-                    </Border>
-                    <Border Margin="0,0,14,0"
-                            Padding="18,14"
-                            CornerRadius="20"
-                            Background="#F4F7FB"
-                            BorderBrush="#DCE4ED"
-                            BorderThickness="1">
-                        <TextBlock Text="2 手机显示已连接"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
-                                   Foreground="#274160"/>
-                    </Border>
-                    <Border Padding="18,14"
-                            CornerRadius="20"
-                            Background="#F4F7FB"
-                            BorderBrush="#DCE4ED"
-                            BorderThickness="1">
-                        <TextBlock Text="3 回电脑点输入框"
-                                   FontSize="16"
-                                   FontWeight="SemiBold"
-                                   Foreground="#274160"/>
-                    </Border>
-                </UniformGrid>
+                        <StackPanel Grid.Row="0"
+                                    Grid.Column="1"
+                                    HorizontalAlignment="Right">
+                            <Border x:Name="StatusPill"
+                                    Padding="16,10"
+                                    CornerRadius="999"
+                                    Background="#F5E7D1">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse x:Name="StatusDot"
+                                             Width="10"
+                                             Height="10"
+                                             Margin="0,0,8,0"
+                                             VerticalAlignment="Center"
+                                             Fill="#D07F2A"/>
+                                    <TextBlock x:Name="StatusText"
+                                               Text="未连接"
+                                               FontSize="15"
+                                               FontWeight="Bold"
+                                               Foreground="#D07F2A"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock x:Name="StatusHintText"
+                                       Width="240"
+                                       Margin="0,10,0,0"
+                                       FontSize="13.5"
+                                       Foreground="#6B7A8B"
+                                       TextAlignment="Right"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
 
-                <Grid Grid.Row="2" Margin="0,24,0,0">
+                        <UniformGrid Grid.Row="1"
+                                     Grid.ColumnSpan="2"
+                                     Margin="0,22,0,0"
+                                     Columns="3">
+                            <Border Style="{StaticResource GuideCardStyle}">
+                                <TextBlock Text="1 先扫局域网"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="#274160"/>
+                            </Border>
+                            <Border Style="{StaticResource GuideCardStyle}">
+                                <TextBlock Text="2 等这里变已连接"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="#274160"/>
+                            </Border>
+                            <Border Margin="0"
+                                    Style="{StaticResource GuideCardStyle}">
+                                <TextBlock Text="3 回电脑点输入框"
+                                           FontSize="15"
+                                           FontWeight="SemiBold"
+                                           Foreground="#274160"/>
+                            </Border>
+                        </UniformGrid>
+                    </Grid>
+                </Border>
+
+                <Grid Grid.Row="1" Margin="0,24,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="24"/>
+                        <ColumnDefinition Width="20"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <Border x:Name="LanCard"
                             Grid.Column="0"
-                            Padding="24"
+                            Padding="22"
                             CornerRadius="28"
-                            Background="#F7FAFD"
+                            Background="#F6FBF8"
                             BorderBrush="#4DB57C"
-                            BorderThickness="2">
+                            BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="18"
+                                              ShadowDepth="8"
+                                              Direction="270"
+                                              Opacity="0.18"
+                                              Color="#A5B2BF"/>
+                        </Border.Effect>
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="216"/>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                            <Border Background="#4DB57C"
+                            <StackPanel Grid.Column="0">
+                            <Border Background="#E7F3EC"
                                     CornerRadius="14"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
@@ -387,16 +482,24 @@ function Set-StatusUi {
                                            Text="推荐地址"
                                            FontSize="13"
                                            FontWeight="Bold"
-                                           Foreground="White"/>
+                                           Foreground="#278659"/>
                             </Border>
 
-                            <Border Grid.Row="1"
+                            <Border
                                     Margin="0,16,0,0"
                                     Padding="16"
+                                    Height="216"
                                     CornerRadius="24"
-                                    Background="#EEF4F9"
-                                    BorderBrush="#D8E0E9"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#F7FAFD"
                                     BorderThickness="1">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="18"
+                                                      ShadowDepth="8"
+                                                      Direction="270"
+                                                      Opacity="0.18"
+                                                      Color="#B4C1CD"/>
+                                </Border.Effect>
                                 <Grid>
                                     <Image x:Name="LanImage"
                                            Stretch="Uniform"
@@ -410,25 +513,33 @@ function Set-StatusUi {
                                                TextWrapping="Wrap"/>
                                 </Grid>
                             </Border>
+                            </StackPanel>
 
-                            <StackPanel Grid.Row="2" Margin="0,20,0,0">
+                            <StackPanel Grid.Column="2">
                                 <TextBlock x:Name="LanTitle"
                                            Text="局域网直连"
-                                           FontSize="28"
+                                           FontSize="27"
                                            FontWeight="Bold"
                                            Foreground="#213244"/>
                                 <TextBlock x:Name="LanSubtitle"
                                            Text="自己手机热点 / 家里 Wi-Fi 时优先试这个"
                                            Margin="0,10,0,0"
-                                           FontSize="16"
+                                           FontSize="15"
                                            Foreground="#647384"
                                            TextWrapping="Wrap"/>
                                 <Border Margin="0,16,0,0"
                                         Padding="16,14"
                                         CornerRadius="20"
-                                        Background="#EDF2F7"
-                                        BorderBrush="#D8E0E9"
+                                        Background="#FFFFFF"
+                                        BorderBrush="#F4F7FB"
                                         BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14"
+                                                          ShadowDepth="6"
+                                                          Direction="270"
+                                                          Opacity="0.14"
+                                                          Color="#BAC6D2"/>
+                                    </Border.Effect>
                                     <TextBlock x:Name="LanAddress"
                                                FontSize="15"
                                                Foreground="#233446"
@@ -436,32 +547,36 @@ function Set-StatusUi {
                                 </Border>
                                 <Button x:Name="LanCopyButton"
                                         Content="复制局域网地址"
-                                        Height="44"
-                                        Margin="0,14,0,0"
+                                        Style="{StaticResource CopyButtonStyle}"
                                         Background="#E7F3EC"
-                                        BorderBrush="#CFE4D7"
-                                        Foreground="#238355"
-                                        FontSize="15"
-                                        FontWeight="SemiBold"/>
+                                        Foreground="#278659"/>
                             </StackPanel>
                         </Grid>
                     </Border>
 
                     <Border x:Name="OnlineCard"
                             Grid.Column="2"
-                            Padding="24"
+                            Padding="22"
                             CornerRadius="28"
                             Background="#EDF2F7"
                             BorderBrush="#D8E0E9"
                             BorderThickness="1">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="18"
+                                              ShadowDepth="8"
+                                              Direction="270"
+                                              Opacity="0.18"
+                                              Color="#A5B2BF"/>
+                        </Border.Effect>
                         <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="216"/>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                            <Border Background="#D07F2A"
+                            <StackPanel Grid.Column="0">
+                            <Border Background="#F5E7D1"
                                     CornerRadius="14"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
@@ -469,16 +584,24 @@ function Set-StatusUi {
                                            Text="互联网备用"
                                            FontSize="13"
                                            FontWeight="Bold"
-                                           Foreground="White"/>
+                                           Foreground="#C87720"/>
                             </Border>
 
-                            <Border Grid.Row="1"
+                            <Border
                                     Margin="0,16,0,0"
                                     Padding="16"
+                                    Height="216"
                                     CornerRadius="24"
-                                    Background="#EEF4F9"
-                                    BorderBrush="#D8E0E9"
+                                    Background="#FFFFFF"
+                                    BorderBrush="#F7FAFD"
                                     BorderThickness="1">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="18"
+                                                      ShadowDepth="8"
+                                                      Direction="270"
+                                                      Opacity="0.18"
+                                                      Color="#B4C1CD"/>
+                                </Border.Effect>
                                 <Grid>
                                     <Image x:Name="OnlineImage"
                                            Stretch="Uniform"
@@ -492,25 +615,33 @@ function Set-StatusUi {
                                                TextWrapping="Wrap"/>
                                 </Grid>
                             </Border>
+                            </StackPanel>
 
-                            <StackPanel Grid.Row="2" Margin="0,20,0,0">
+                            <StackPanel Grid.Column="2">
                                 <TextBlock x:Name="OnlineTitle"
                                            Text="互联网地址"
-                                           FontSize="28"
+                                           FontSize="27"
                                            FontWeight="Bold"
                                            Foreground="#213244"/>
                                 <TextBlock x:Name="OnlineSubtitle"
                                            Text="局域网打不开时，再试这个互联网地址"
                                            Margin="0,10,0,0"
-                                           FontSize="16"
+                                           FontSize="15"
                                            Foreground="#647384"
                                            TextWrapping="Wrap"/>
                                 <Border Margin="0,16,0,0"
                                         Padding="16,14"
                                         CornerRadius="20"
-                                        Background="#EDF2F7"
-                                        BorderBrush="#D8E0E9"
+                                        Background="#FFFFFF"
+                                        BorderBrush="#F4F7FB"
                                         BorderThickness="1">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14"
+                                                          ShadowDepth="6"
+                                                          Direction="270"
+                                                          Opacity="0.14"
+                                                          Color="#BAC6D2"/>
+                                    </Border.Effect>
                                     <TextBlock x:Name="OnlineAddress"
                                                FontSize="15"
                                                Foreground="#233446"
@@ -518,30 +649,13 @@ function Set-StatusUi {
                                 </Border>
                                 <Button x:Name="OnlineCopyButton"
                                         Content="复制互联网地址"
-                                        Height="44"
-                                        Margin="0,14,0,0"
+                                        Style="{StaticResource CopyButtonStyle}"
                                         Background="#F5E7D1"
-                                        BorderBrush="#E8D0B0"
-                                        Foreground="#C87720"
-                                        FontSize="15"
-                                        FontWeight="SemiBold"/>
+                                        Foreground="#C87720"/>
                             </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>
-
-                <Border Grid.Row="3"
-                        Margin="0,22,0,0"
-                        Padding="18,16"
-                        CornerRadius="22"
-                        Background="#F4F7FB"
-                        BorderBrush="#DCE4ED"
-                        BorderThickness="1">
-                    <TextBlock Text="用法很简单：扫码以后，先看手机页已经能输入，再回电脑把光标点进真正要输入的位置。"
-                               FontSize="15"
-                               Foreground="#617182"
-                               TextWrapping="Wrap"/>
-                </Border>
             </Grid>
         </Border>
     </Grid>
@@ -559,6 +673,7 @@ if (Test-Path $IconPath) {
 }
 
 $script:StatusPill = $window.FindName("StatusPill")
+$script:StatusDot = $window.FindName("StatusDot")
 $script:StatusText = $window.FindName("StatusText")
 $script:StatusHintText = $window.FindName("StatusHintText")
 $lanCard = $window.FindName("LanCard")
