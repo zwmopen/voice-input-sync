@@ -325,15 +325,40 @@ function Update-Chips {
 }
 
 function Update-ProgressFill {
-    param([double]$Percent)
+    param(
+        [string]$State = "running",
+        [double]$Percent = 0
+    )
 
     $script:CurrentPercent = [Math]::Max(0, [Math]::Min(100, $Percent))
     $trackWidth = [Math]::Max(0, $script:ProgressTrack.ActualWidth - 10)
-    $fillWidth = $trackWidth * ($script:CurrentPercent / 100.0)
-    if ($script:CurrentPercent -gt 0 -and $fillWidth -lt 18) {
-        $fillWidth = 18
+    if ($trackWidth -le 0) {
+        return
     }
-    $script:ProgressFill.Width = $fillWidth
+
+    if ($State -eq "success") {
+        $script:ProgressTrack.Background = New-Brush "#DCEEE3"
+        $script:ProgressFill.Background = New-Brush "#4DB57C"
+        $script:ProgressFill.Width = $trackWidth
+        $script:ProgressFill.RenderTransform.X = 0
+        $script:ProgressShimmer.Visibility = "Collapsed"
+        return
+    }
+
+    if ($State -eq "error") {
+        $script:ProgressTrack.Background = New-Brush "#F1DDDC"
+        $script:ProgressFill.Background = New-Brush "#C14E4A"
+        $script:ProgressFill.Width = $trackWidth
+        $script:ProgressFill.RenderTransform.X = 0
+        $script:ProgressShimmer.Visibility = "Collapsed"
+        return
+    }
+
+    $segmentWidth = [Math]::Min([Math]::Max(150, [Math]::Floor($trackWidth * 0.34)), [Math]::Max(86, $trackWidth - 18))
+    $script:ProgressTrack.Background = New-Brush "#D8E0E9"
+    $script:ProgressFill.Background = New-Brush "#D07F2A"
+    $script:ProgressFill.Width = $segmentWidth
+    $script:ProgressShimmer.Visibility = "Visible"
 }
 
 function Set-ProgressTarget {
@@ -344,7 +369,7 @@ function Set-ProgressTarget {
 
     $script:ProgressTarget = [Math]::Max(0, [Math]::Min(100, $Percent))
     if ($Immediate) {
-        Update-ProgressFill -Percent $script:ProgressTarget
+        Update-ProgressFill -State $script:CurrentState -Percent $script:ProgressTarget
     }
 }
 
@@ -657,9 +682,13 @@ try {
                                 <Grid ClipToBounds="True">
                                     <Border x:Name="ProgressFill"
                                             HorizontalAlignment="Left"
-                                            Width="82"
+                                            Width="150"
                                             Background="#D07F2A"
-                                            CornerRadius="9"/>
+                                            CornerRadius="9">
+                                        <Border.RenderTransform>
+                                            <TranslateTransform X="-150"/>
+                                        </Border.RenderTransform>
+                                    </Border>
                                     <Border x:Name="ProgressShimmer"
                                             Width="110"
                                             HorizontalAlignment="Left"
@@ -764,11 +793,11 @@ try {
 
     Set-BadgeState -State "running"
     Update-Chips -State "running" -Percent 12
-    Update-ProgressFill -Percent 12
+    Update-ProgressFill -State "running" -Percent 12
     Set-ProgressTarget -Percent 18
 
     $script:ProgressTrack.Add_SizeChanged({
-        Update-ProgressFill -Percent $script:CurrentPercent
+        Update-ProgressFill -State $script:CurrentState -Percent $script:CurrentPercent
     })
 
     $script:OpenButton.Add_Click({
@@ -825,18 +854,11 @@ try {
                 $script:TipText.Text = $script:TipMessages[$index]
             }
 
-            $trackWidth = [Math]::Max(120, $script:ProgressTrack.ActualWidth)
-            $shimmerOffset = (($script:AnimationTick * 16) % ([int]($trackWidth + 160))) - 140
-            $script:ProgressShimmer.RenderTransform.X = $shimmerOffset
-
-            $targetPercent = [Math]::Max($script:ProgressTarget, 26)
-            if ($script:CurrentPercent -lt $targetPercent) {
-                $gap = $targetPercent - $script:CurrentPercent
-                $step = [Math]::Min(4.8, [Math]::Max(0.55, $gap * 0.32))
-                Update-ProgressFill -Percent ($script:CurrentPercent + $step)
-            } elseif ($script:CurrentPercent -lt 86) {
-                Update-ProgressFill -Percent ($script:CurrentPercent + 0.22)
-            }
+            $trackWidth = [Math]::Max(160, $script:ProgressTrack.ActualWidth)
+            $travelWidth = [Math]::Max(220, [int]($trackWidth + $script:ProgressFill.Width + 30))
+            $segmentOffset = (($script:AnimationTick * 26) % $travelWidth) - $script:ProgressFill.Width
+            $script:ProgressFill.RenderTransform.X = $segmentOffset
+            $script:ProgressShimmer.RenderTransform.X = $segmentOffset + 46
         }
     })
 
@@ -875,6 +897,7 @@ try {
                 Set-BadgeState -State "success"
                 Update-Chips -State "success" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
+                Update-ProgressFill -State "success" -Percent 100
                 $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
@@ -942,6 +965,7 @@ try {
                 Set-BadgeState -State "error"
                 Update-Chips -State "error" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
+                Update-ProgressFill -State "error" -Percent 100
                 $script:CloseButton.Content = Get-Text @(0x5173,0x95ED)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
@@ -955,6 +979,7 @@ try {
             Set-BadgeState -State "running"
             Update-Chips -State "running" -Percent $percent
             Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
+            Update-ProgressFill -State "running" -Percent $percent
             $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
@@ -974,6 +999,7 @@ try {
             Set-BadgeState -State "error"
             Update-Chips -State "error" -Percent 100
             Set-ProgressTarget -Percent 100 -Immediate
+            Update-ProgressFill -State "error" -Percent 100
             $script:LogButton.Visibility = "Visible"
         }
     })
