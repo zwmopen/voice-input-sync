@@ -15,8 +15,12 @@ $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
+$BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$UpdateStatusFile = Join-Path $LogsDir "update-status.json"
 $QrHtmlFile = Join-Path $PackageDir ((-join ([int[]](0x624B,0x673A,0x626B,0x7801,0x6253,0x5F00) | ForEach-Object { [char]$_ })) + ".html")
 $QrWindowScript = Join-Path $BaseDir "portable-qr-window.ps1"
+$SettingsWindowScript = Join-Path $BaseDir "portable-settings-window.ps1"
+$UpdateCheckScript = Join-Path $BaseDir "portable-check-update.ps1"
 $StopScript = Join-Path $BaseDir "portable-stop.ps1"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $MutexName = "Local\VoiceInputSyncPortableTray"
@@ -84,6 +88,32 @@ function Read-RuntimeConfig {
         return Get-Content -Raw -LiteralPath $RuntimeConfigFile -Encoding UTF8 | ConvertFrom-Json
     } catch {
         Write-Log ("Runtime config read failed: " + $_.Exception.Message)
+        return $null
+    }
+}
+
+function Read-BuildInfo {
+    if (-not (Test-Path $BuildInfoFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $BuildInfoFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        Write-Log ("Build info read failed: " + $_.Exception.Message)
+        return $null
+    }
+}
+
+function Read-UpdateStatus {
+    if (-not (Test-Path $UpdateStatusFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $UpdateStatusFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        Write-Log ("Update status read failed: " + $_.Exception.Message)
         return $null
     }
 }
@@ -232,6 +262,49 @@ function Set-ButtonPalette {
     })
 }
 
+function Set-MenuButtonContent {
+    param(
+        [System.Windows.Controls.Button]$Button,
+        [string]$Label,
+        [bool]$ShowDot = $false
+    )
+
+    if (-not $ShowDot) {
+        $Button.Content = $Label
+        return
+    }
+
+    $grid = New-Object System.Windows.Controls.Grid
+    $grid.Margin = [System.Windows.Thickness]::new(0)
+
+    $columnText = New-Object System.Windows.Controls.ColumnDefinition
+    $columnText.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+    $columnDot = New-Object System.Windows.Controls.ColumnDefinition
+    $columnDot.Width = [System.Windows.GridLength]::Auto
+    $grid.ColumnDefinitions.Add($columnText)
+    $grid.ColumnDefinitions.Add($columnDot)
+
+    $text = New-Object System.Windows.Controls.TextBlock
+    $text.Text = $Label
+    $text.FontSize = 11.8
+    $text.FontWeight = "Bold"
+    $text.Foreground = $Button.Foreground
+    $text.VerticalAlignment = "Center"
+    [System.Windows.Controls.Grid]::SetColumn($text, 0)
+    $grid.Children.Add($text) | Out-Null
+
+    $dot = New-Object System.Windows.Shapes.Ellipse
+    $dot.Width = 8
+    $dot.Height = 8
+    $dot.Fill = New-WpfBrush "#4DB57C"
+    $dot.Margin = [System.Windows.Thickness]::new(10,0,4,0)
+    $dot.VerticalAlignment = "Center"
+    [System.Windows.Controls.Grid]::SetColumn($dot, 1)
+    $grid.Children.Add($dot) | Out-Null
+
+    $Button.Content = $grid
+}
+
 function Set-ButtonEnabledState {
     param(
         [System.Windows.Controls.Button]$Button,
@@ -281,6 +354,25 @@ function Resolve-MenuLocation {
     return [System.Windows.Point]::new([double]$x, [double]$y)
 }
 
+function Start-BackgroundUpdateCheck {
+    param([switch]$Force)
+
+    if (-not (Test-Path $UpdateCheckScript)) {
+        return
+    }
+
+    try {
+        $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $UpdateCheckScript)
+        if ($Force) {
+            $arguments += "-Force"
+        }
+
+        Start-Process -FilePath (Get-Command powershell.exe).Source -ArgumentList $arguments -WindowStyle Hidden | Out-Null
+    } catch {
+        Write-Log ("Update check start failed: " + $_.Exception.Message)
+    }
+}
+
 if (-not (Enter-TrayMutex)) {
     Write-Log "Tray already running."
     exit 0
@@ -291,12 +383,14 @@ $subtitleText = Get-UiText 0x5C40,0x57DF,0x7F51,0x4F18,0x5148,0xFF0C,0x4E92,0x80
 $openQrLabel = Get-UiText 0x6253,0x5F00,0x626B,0x7801,0x9875
 $openMobileLabel = Get-UiText 0x6253,0x5F00,0x624B,0x673A,0x9875
 $copyLabel = Get-UiText 0x590D,0x5236,0x5730,0x5740
+$settingsLabel = Get-UiText 0x8BBE,0x7F6E
 $exitLabel = Get-UiText 0x9000,0x51FA,0x540C,0x6B65
 $qrOpenFailedText = Get-UiText 0x626B,0x7801,0x754C,0x9762,0x6682,0x65F6,0x8FD8,0x6CA1,0x51C6,0x5907,0x597D,0x3002
 $pendingText = Get-UiText 0x8FD8,0x6CA1,0x62FF,0x5230,0x624B,0x673A,0x5730,0x5740,0xFF0C,0x8BF7,0x7A0D,0x540E,0x518D,0x8BD5,0x3002
 $copiedText = Get-UiText 0x624B,0x673A,0x5730,0x5740,0x5DF2,0x7ECF,0x590D,0x5236,0x3002
 $copyFailedText = Get-UiText 0x590D,0x5236,0x5931,0x8D25,0xFF0C,0x8BF7,0x7A0D,0x540E,0x91CD,0x8BD5,0x3002
 $openFailedText = Get-UiText 0x624B,0x673A,0x9875,0x9762,0x6682,0x65F6,0x8FD8,0x6CA1,0x51C6,0x5907,0x597D,0x3002
+$settingsFailedText = Get-UiText 0x8BBE,0x7F6E,0x7A97,0x53E3,0x6682,0x65F6,0x6253,0x4E0D,0x5F00,0x3002
 $readyText = Get-UiText 0x5DF2,0x7ECF,0x5728,0x540E,0x53F0,0x5F85,0x547D,0x3002,0x53CC,0x51FB,0x6258,0x76D8,0x56FE,0x6807,0x53EF,0x4EE5,0x6253,0x5F00,0x626B,0x7801,0x9875,0x3002
 
 $notifyIcon = $null
@@ -310,7 +404,7 @@ try {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Width="226"
-        Height="228"
+        Height="274"
         WindowStyle="None"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -400,7 +494,8 @@ try {
       <StackPanel Grid.Row="1" Margin="0,12,0,0">
         <Button x:Name="QrButton" Style="{StaticResource MenuButtonStyle}"/>
         <Button x:Name="MobileButton" Style="{StaticResource MenuButtonStyle}"/>
-        <Button x:Name="CopyButton" Style="{StaticResource MenuButtonStyle}" Margin="0,0,0,8"/>
+        <Button x:Name="CopyButton" Style="{StaticResource MenuButtonStyle}"/>
+        <Button x:Name="SettingsButton" Style="{StaticResource MenuButtonStyle}" Margin="0,0,0,8"/>
       </StackPanel>
       <StackPanel Grid.Row="2" Margin="0,2,0,0">
         <Border Height="1"
@@ -422,19 +517,21 @@ try {
     $openQrButton = [System.Windows.Controls.Button]$popupWindow.FindName("QrButton")
     $openMobileButton = [System.Windows.Controls.Button]$popupWindow.FindName("MobileButton")
     $copyButton = [System.Windows.Controls.Button]$popupWindow.FindName("CopyButton")
+    $settingsButton = [System.Windows.Controls.Button]$popupWindow.FindName("SettingsButton")
     $exitButton = [System.Windows.Controls.Button]$popupWindow.FindName("ExitButton")
 
     $titleLabel.Text = $titleText
     $subtitleLabel.Text = $subtitleText
-    $openQrButton.Content = $openQrLabel
-    $openMobileButton.Content = $openMobileLabel
-    $copyButton.Content = $copyLabel
-    $exitButton.Content = $exitLabel
-
     Set-ButtonPalette -Button $openQrButton -BaseColor "#F5E7D1" -HoverColor "#ECD4B0" -TextColor "#C87720"
     Set-ButtonPalette -Button $openMobileButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
     Set-ButtonPalette -Button $copyButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
+    Set-ButtonPalette -Button $settingsButton -BaseColor "#EAF1F8" -HoverColor "#DCE7F3" -TextColor "#244A73"
     Set-ButtonPalette -Button $exitButton -BaseColor "#F6E7E6" -HoverColor "#EFD8D6" -TextColor "#C55A51"
+    Set-MenuButtonContent -Button $openQrButton -Label $openQrLabel
+    Set-MenuButtonContent -Button $openMobileButton -Label $openMobileLabel
+    Set-MenuButtonContent -Button $copyButton -Label $copyLabel
+    Set-MenuButtonContent -Button $settingsButton -Label $settingsLabel
+    Set-MenuButtonContent -Button $exitButton -Label $exitLabel
 
     $notifyIcon = New-Object System.Windows.Forms.NotifyIcon
     if (Test-Path $IconPath) {
@@ -459,6 +556,21 @@ try {
         $hasUrl = -not [string]::IsNullOrWhiteSpace($preferredUrl)
         Set-ButtonEnabledState -Button $openMobileButton -Enabled $hasUrl
         Set-ButtonEnabledState -Button $copyButton -Enabled $hasUrl
+
+        $updateStatus = Read-UpdateStatus
+        $buildInfo = Read-BuildInfo
+        $currentVersion = ""
+        if ($buildInfo) {
+            $currentVersion = [string]$buildInfo.appVersion
+            if ([string]::IsNullOrWhiteSpace($currentVersion)) {
+                $currentVersion = [string]$buildInfo.gitCommit
+            }
+        }
+        $showUpdateDot = $false
+        if ($updateStatus -and ([string]$updateStatus.currentVersion).Trim() -eq $currentVersion -and [bool]$updateStatus.hasUpdate) {
+            $showUpdateDot = $true
+        }
+        Set-MenuButtonContent -Button $settingsButton -Label $settingsLabel -ShowDot $showUpdateDot
     }
 
     function Show-CustomMenu {
@@ -517,6 +629,36 @@ try {
         }
     }
 
+    $settingsAction = {
+        Hide-CustomMenu
+        if (-not (Test-Path $SettingsWindowScript)) {
+            Show-Balloon -NotifyIcon $notifyIcon -Title $titleText -Text $settingsFailedText -Icon ([System.Windows.Forms.ToolTipIcon]::Warning)
+            return
+        }
+
+        try {
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object {
+                    $_.ProcessId -ne $PID -and
+                    $_.CommandLine -and
+                    $_.CommandLine -like '*portable-settings-window.ps1*'
+                } |
+                ForEach-Object {
+                    try {
+                        Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                    } catch {
+                    }
+                }
+
+            Start-Process -FilePath (Get-Command powershell.exe).Source `
+                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $SettingsWindowScript) `
+                -WorkingDirectory $PackageDir `
+                -WindowStyle Hidden | Out-Null
+        } catch {
+            Show-Balloon -NotifyIcon $notifyIcon -Title $titleText -Text $settingsFailedText -Icon ([System.Windows.Forms.ToolTipIcon]::Warning)
+        }
+    }
+
     $exitAction = {
         Hide-CustomMenu
         try {
@@ -537,6 +679,7 @@ try {
     $openQrButton.Add_Click($openQrAction)
     $openMobileButton.Add_Click($openMobileAction)
     $copyButton.Add_Click($copyAction)
+    $settingsButton.Add_Click($settingsAction)
     $exitButton.Add_Click($exitAction)
 
     $notifyIcon.Add_MouseClick({
@@ -555,6 +698,14 @@ try {
     $notifyIcon.Add_DoubleClick({
         Toggle-CustomMenu
     })
+
+    $updateTimer = New-Object System.Windows.Forms.Timer
+    $updateTimer.Interval = 5000
+    $updateTimer.Add_Tick({
+        Update-MenuAvailability
+    })
+    $updateTimer.Start()
+    Start-BackgroundUpdateCheck
 
     $popupWindow.Add_Deactivated({
         if ($script:PopupShownAt) {

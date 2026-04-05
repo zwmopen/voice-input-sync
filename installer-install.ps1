@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $zipPath = if ($SourceZip) { $SourceZip } else { Join-Path $scriptDir "语音输入同步-绿色版.zip" }
 $productName = "语音输入同步"
-$productVersion = "2026.04.03.1"
+$productVersion = "0.0.0"
 $installDir = Join-Path $env:LOCALAPPDATA "Programs\$productName"
 $desktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "$productName.lnk"
 $startMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\$productName"
@@ -111,6 +111,17 @@ try {
     }
 
     Copy-Item -Path (Join-Path $contentRoot "*") -Destination $installDir -Recurse -Force
+
+    $installedBuildInfoPath = Join-Path $installDir "_runtime\build-info.json"
+    if (Test-Path $installedBuildInfoPath) {
+        try {
+            $installedBuildInfo = Get-Content -Raw -LiteralPath $installedBuildInfoPath -Encoding UTF8 | ConvertFrom-Json
+            if ($installedBuildInfo -and -not [string]::IsNullOrWhiteSpace([string]$installedBuildInfo.appVersion)) {
+                $productVersion = [string]$installedBuildInfo.appVersion
+            }
+        } catch {
+        }
+    }
 
     $uninstallScriptContent = @(
         "param()"

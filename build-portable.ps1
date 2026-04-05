@@ -41,6 +41,7 @@ $zipPath = Join-Path $releaseRoot ($productName + ".zip")
 $iconScript = Join-Path $projectRoot "generate_app_icon.py"
 $iconPath = Join-Path $projectRoot "assets\voice-sync-icon.ico"
 $versionInfoPath = Join-Path $projectRoot "pyinstaller-version.txt"
+$appVersionPath = Join-Path $projectRoot "app-version.txt"
 $utf8Bom = [System.Text.UTF8Encoding]::new($true)
 $asciiEncoding = [System.Text.Encoding]::ASCII
 $pyInstallerMode = "--onedir"
@@ -60,10 +61,20 @@ try {
     $gitCommit = ""
 }
 
+$appVersion = ""
+if (Test-Path $appVersionPath) {
+    try {
+        $appVersion = (Get-Content -Raw -LiteralPath $appVersionPath -Encoding UTF8).Trim()
+    } catch {
+        $appVersion = ""
+    }
+}
+
 $buildInfo = [ordered]@{
     buildId = [guid]::NewGuid().ToString("N")
     builtAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     gitCommit = $gitCommit
+    appVersion = $appVersion
 }
 $buildInfoJson = $buildInfo | ConvertTo-Json -Compress
 
@@ -125,11 +136,14 @@ Copy-Item (Join-Path $projectRoot "server.py") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-start.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-launch-ui.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-qr-window.ps1") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable-check-update.ps1") $runtimeRoot -Force
+Copy-Item (Join-Path $projectRoot "portable-settings-window.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-tray.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "portable-stop.ps1") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "README.md") $runtimeRoot -Force
 Copy-Item (Join-Path $projectRoot "使用手册.md") $runtimeRoot -Force -ErrorAction SilentlyContinue
 Set-Content -Path (Join-Path $runtimeRoot "build-info.json") -Value $buildInfoJson -Encoding UTF8
+Copy-Item $appVersionPath (Join-Path $runtimeRoot "app-version.txt") -Force
 Copy-Item (Join-Path $projectRoot "assets") $runtimeRoot -Recurse -Force
 Remove-Item (Join-Path $runtimeRoot "assets\icon-options") -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $runtimeRoot "assets\voice-sync-icon-source.png") -Force -ErrorAction SilentlyContinue
