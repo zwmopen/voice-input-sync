@@ -1678,7 +1678,7 @@ try {
     $directIpUrl = ""
 
     Show-Stage -Title "正在准备手机地址" -Detail "热点网络下会自动补一个更稳的兼容地址。" -Emoji "🛰️" -Color "DarkCyan" -Percent 72
-    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -NetworkProfile $networkProfile -TunnelWaitSeconds 5
+    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -NetworkProfile $networkProfile -TunnelWaitSeconds 3
     $url = $shareEndpoints.PrimaryUrl
     Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -DirectIpUrl $shareEndpoints.DirectIpUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
 

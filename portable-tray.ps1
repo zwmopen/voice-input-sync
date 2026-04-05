@@ -520,6 +520,12 @@ try {
     $copyButton = [System.Windows.Controls.Button]$popupWindow.FindName("CopyButton")
     $settingsButton = [System.Windows.Controls.Button]$popupWindow.FindName("SettingsButton")
     $exitButton = [System.Windows.Controls.Button]$popupWindow.FindName("ExitButton")
+    $nativeContextMenu = $null
+    $nativeOpenQrItem = $null
+    $nativeOpenMobileItem = $null
+    $nativeCopyItem = $null
+    $nativeSettingsItem = $null
+    $nativeExitItem = $null
 
     $titleLabel.Text = $titleText
     $subtitleLabel.Text = $subtitleText
@@ -557,6 +563,12 @@ try {
         $hasUrl = -not [string]::IsNullOrWhiteSpace($preferredUrl)
         Set-ButtonEnabledState -Button $openMobileButton -Enabled $hasUrl
         Set-ButtonEnabledState -Button $copyButton -Enabled $hasUrl
+        if ($nativeOpenMobileItem) {
+            $nativeOpenMobileItem.Enabled = $hasUrl
+        }
+        if ($nativeCopyItem) {
+            $nativeCopyItem.Enabled = $hasUrl
+        }
 
         $updateStatus = Read-UpdateStatus
         $buildInfo = Read-BuildInfo
@@ -572,6 +584,9 @@ try {
             $showUpdateDot = $true
         }
         Set-MenuButtonContent -Button $settingsButton -Label $settingsLabel -ShowDot $showUpdateDot
+        if ($nativeSettingsItem) {
+            $nativeSettingsItem.Text = if ($showUpdateDot) { "$settingsLabel ●" } else { $settingsLabel }
+        }
     }
 
     function Show-CustomMenu {
@@ -683,21 +698,45 @@ try {
     $settingsButton.Add_Click($settingsAction)
     $exitButton.Add_Click($exitAction)
 
+    $nativeContextMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $nativeContextMenu.ShowImageMargin = $false
+    $nativeOpenQrItem = New-Object System.Windows.Forms.ToolStripMenuItem($openQrLabel)
+    $nativeOpenMobileItem = New-Object System.Windows.Forms.ToolStripMenuItem($openMobileLabel)
+    $nativeCopyItem = New-Object System.Windows.Forms.ToolStripMenuItem($copyLabel)
+    $nativeSettingsItem = New-Object System.Windows.Forms.ToolStripMenuItem($settingsLabel)
+    $nativeExitItem = New-Object System.Windows.Forms.ToolStripMenuItem($exitLabel)
+    [void]$nativeContextMenu.Items.Add($nativeOpenQrItem)
+    [void]$nativeContextMenu.Items.Add($nativeOpenMobileItem)
+    [void]$nativeContextMenu.Items.Add($nativeCopyItem)
+    [void]$nativeContextMenu.Items.Add($nativeSettingsItem)
+    [void]$nativeContextMenu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    [void]$nativeContextMenu.Items.Add($nativeExitItem)
+    $nativeOpenQrItem.Add_Click({ $openQrAction.Invoke() })
+    $nativeOpenMobileItem.Add_Click({ $openMobileAction.Invoke() })
+    $nativeCopyItem.Add_Click({ $copyAction.Invoke() })
+    $nativeSettingsItem.Add_Click({ $settingsAction.Invoke() })
+    $nativeExitItem.Add_Click({ $exitAction.Invoke() })
+    $nativeContextMenu.Add_Opening({
+        Update-MenuAvailability
+    })
+    $notifyIcon.ContextMenuStrip = $nativeContextMenu
+
     $notifyIcon.Add_MouseClick({
         param($sender, $e)
 
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
-            Toggle-CustomMenu
+            Hide-CustomMenu
+            Update-MenuAvailability
             return
         }
 
         if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-            $openQrAction.Invoke()
+            Toggle-CustomMenu
         }
     })
 
     $notifyIcon.Add_DoubleClick({
-        Toggle-CustomMenu
+        $openQrAction.Invoke()
     })
 
     $updateTimer = New-Object System.Windows.Forms.Timer
@@ -751,6 +790,12 @@ try {
         try {
             $script:AllowWindowClose = $true
             $popupWindow.Close()
+        } catch {
+        }
+    }
+    if ($nativeContextMenu) {
+        try {
+            $nativeContextMenu.Dispose()
         } catch {
         }
     }

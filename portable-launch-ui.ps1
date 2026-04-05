@@ -32,6 +32,7 @@ $script:CurrentTarget = ""
 $script:CurrentState = "running"
 $script:CurrentPercent = 12
 $script:ProgressTarget = 18
+$script:PageOpenedByLauncher = $false
 $script:StartupProcess = $null
 $script:CloseTimer = $null
 $script:LaunchRequested = $false
@@ -548,8 +549,7 @@ function Start-BackendLaunch {
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
         "-File", $StartupScript,
-        "-Silent",
-        "-ForceOpenPage"
+        "-Silent"
     )
 
     $script:StartupProcess = Start-Process powershell.exe -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
@@ -1087,11 +1087,20 @@ try {
                 if ($null -ne $status.PSObject.Properties["openHandled"]) {
                     $openHandled = [bool]$status.openHandled
                 }
+                if (-not $script:PageOpenedByLauncher) {
+                    $targetToOpen = Resolve-OpenTarget
+                    if (-not [string]::IsNullOrWhiteSpace($targetToOpen)) {
+                        $script:PageOpenedByLauncher = Invoke-ShellOpen -Target $targetToOpen
+                        if ($script:PageOpenedByLauncher) {
+                            Write-UiLog ("扫码页已由启动页打开: {0}" -f $targetToOpen)
+                        }
+                    }
+                }
                 if (-not $script:SuccessSeenAt) {
                     $script:SuccessSeenAt = Get-Date
                     if (-not $NoAutoClose -and -not $script:AutoMinimizeArmed) {
                         $script:AutoMinimizeArmed = $true
-                        if ($openHandled) {
+                        if ($openHandled -or $script:PageOpenedByLauncher) {
                             $script:CloseTimer.Stop()
                             $script:CloseTimer.Interval = [TimeSpan]::FromMilliseconds(220)
                             $script:CloseTimer.Start()
