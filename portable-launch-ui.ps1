@@ -38,8 +38,9 @@ $script:LaunchRequested = $false
 $script:WindowShownAt = $null
 $script:SuccessSeenAt = $null
 $script:LastNetworkHint = ""
+$script:EstimatedTotalSeconds = 12
 $script:TipMessages = @(
-    "会先找可用端口，再拉起同步服务。",
+    "通常约 8-20 秒，网络较慢时可能到 30 秒。",
     "准备好后会自动弹出扫码页。",
     "如果已经在运行，这次会直接复用当前会话。"
 )
@@ -457,6 +458,39 @@ function Update-HeroCopy {
     $script:HeroSubtitle.Text = "正在整理局域网地址、二维码和扫码页。"
 }
 
+function Update-StartupEstimate {
+    param(
+        [int]$Percent = 12
+    )
+
+    if (-not $script:WindowShownAt) {
+        return
+    }
+
+    $elapsed = [int][Math]::Max(0, [Math]::Floor(((Get-Date) - $script:WindowShownAt).TotalSeconds))
+    $normalizedPercent = [int][Math]::Max(10, [Math]::Min(92, $Percent))
+    $predictedTotal = if ($elapsed -le 0) {
+        12
+    } else {
+        [int][Math]::Round(($elapsed * 100.0) / $normalizedPercent)
+    }
+
+    $predictedTotal = [int][Math]::Max(9, [Math]::Min(35, $predictedTotal))
+    if ($normalizedPercent -lt 28) {
+        $predictedTotal = [int][Math]::Max($predictedTotal, 12)
+    }
+
+    $script:EstimatedTotalSeconds = $predictedTotal
+    $remaining = [int][Math]::Max(0, $predictedTotal - $elapsed)
+    $script:SubtitleText.Text = "通常约 8-20 秒，网络较慢时可能到 30 秒。"
+
+    if ($remaining -le 1) {
+        $script:FooterText.Text = ("已用 {0} 秒，正在做最后收尾..." -f $elapsed)
+    } else {
+        $script:FooterText.Text = ("预计总耗时约 {0} 秒，已用 {1} 秒，还需约 {2} 秒。" -f $predictedTotal, $elapsed, $remaining)
+    }
+}
+
 function Minimize-LauncherWindow {
     if (-not $script:MainWindow) {
         return
@@ -753,7 +787,7 @@ try {
                         <TextBlock x:Name="SubtitleText"
                                    Grid.Row="1"
                                    Margin="0,12,0,0"
-                                   Text="&#x4F1A;&#x5148;&#x627E;&#x53EF;&#x7528;&#x7AEF;&#x53E3;&#xFF0C;&#x518D;&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;&#x3002;"
+                                   Text="&#x901A;&#x5E38;&#x7EA6; 8-20 &#x79D2;&#xFF0C;&#x7F51;&#x7EDC;&#x8F83;&#x6162;&#x65F6;&#x53EF;&#x80FD;&#x5230; 30 &#x79D2;&#x3002;"
                                    FontSize="18"
                                    Foreground="#6B7D92"
                                    TextWrapping="Wrap"/>
@@ -810,7 +844,7 @@ try {
                         <TextBlock x:Name="TipText"
                                    Grid.Row="4"
                                    Margin="0,14,0,0"
-                                   Text="&#x6B63;&#x5E38;&#x60C5;&#x51B5;&#x4E0B;&#x53EA;&#x8981;&#x51E0;&#x79D2;&#x3002;"
+                                   Text="&#x901A;&#x5E38;&#x7EA6; 8-20 &#x79D2;&#xFF0C;&#x7F51;&#x7EDC;&#x6162;&#x65F6;&#x53EF;&#x80FD;&#x5230; 30 &#x79D2;&#x3002;"
                                    FontSize="16"
                                    Foreground="#6B7D92"
                                    TextWrapping="Wrap"/>
@@ -998,6 +1032,7 @@ try {
             if (($script:AnimationTick % 8) -eq 0) {
                 $index = [int](($script:AnimationTick / 8) % $script:TipMessages.Count)
                 $script:TipText.Text = $script:TipMessages[$index]
+                Update-StartupEstimate -Percent $script:CurrentPercent
             }
 
             $trackWidth = [Math]::Max(160, $script:ProgressTrack.ActualWidth)
@@ -1135,8 +1170,8 @@ try {
             }
             if (-not [string]::IsNullOrWhiteSpace([string]$status.detail)) {
                 $script:DetailText.Text = [string]$status.detail
-                $script:FooterText.Text = [string]$status.detail
             }
+            Update-StartupEstimate -Percent $percent
             $script:OpenButton.Visibility = "Collapsed"
             $script:CopyButton.Visibility = "Collapsed"
             $script:LogButton.Visibility = "Collapsed"
@@ -1158,6 +1193,7 @@ try {
         if (-not $script:WindowShownAt) {
             $script:WindowShownAt = Get-Date
             Write-UiLog "启动窗口已显示。"
+            Update-StartupEstimate -Percent $script:CurrentPercent
             $launchTimer.Start()
         }
     })

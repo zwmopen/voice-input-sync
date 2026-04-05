@@ -26,6 +26,8 @@ $LauncherVbs = Join-Path $PackageDir "启动语音输入同步.vbs"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
 $ShortcutIcon = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "语音输入同步.lnk"
+$ShortcutStateFile = Join-Path $LogsDir "shortcut-state.json"
+$AppVersionFile = Join-Path $BaseDir "app-version.txt"
 $StatusOutputFile = if ($StatusFile) { $StatusFile } else { Join-Path $LogsDir "startup-status.json" }
 $OpenStateFile = Join-Path $LogsDir "page-open-state.json"
 $TunnelHttpOutLog = Join-Path $LogsDir "tunnel-http.out.log"
@@ -279,7 +281,10 @@ function Get-ProcessCommandLineValue {
 }
 
 function Get-ManagedScriptProcesses {
-    param([string]$ScriptPath)
+    param(
+        [string]$ScriptPath,
+        [object[]]$ProcessSnapshot = @()
+    )
 
     if ([string]::IsNullOrWhiteSpace($ScriptPath) -or -not (Test-Path $ScriptPath)) {
         return @()
@@ -293,7 +298,13 @@ function Get-ManagedScriptProcesses {
     }
 
     $escapedScriptPath = [regex]::Escape($resolvedScriptPath)
-    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $source = if ($ProcessSnapshot -and $ProcessSnapshot.Count -gt 0) {
+        $ProcessSnapshot
+    } else {
+        @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    }
+
+    return @($source | Where-Object {
         $_.CommandLine -and $_.CommandLine -match $escapedScriptPath
     })
 }
@@ -517,6 +528,7 @@ function Wait-ManagedRoleProcessReady {
 function Stop-ManagedProcesses {
     $targets = New-Object System.Collections.Generic.List[object]
     $stopped = 0
+    $processSnapshot = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
 
     foreach ($proc in @(Get-ExecutableProcess -ExecutablePath $HttpExe)) {
         [void]$targets.Add($proc)
@@ -527,19 +539,19 @@ function Stop-ManagedProcesses {
     foreach ($proc in @(Get-ExecutableProcess -ExecutablePath $ClientExe)) {
         [void]$targets.Add($proc)
     }
-    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $HttpScript)) {
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $HttpScript -ProcessSnapshot $processSnapshot)) {
         [void]$targets.Add($proc)
     }
-    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $WsScript)) {
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $WsScript -ProcessSnapshot $processSnapshot)) {
         [void]$targets.Add($proc)
     }
-    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $TrayScript)) {
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $TrayScript -ProcessSnapshot $processSnapshot)) {
         [void]$targets.Add($proc)
     }
-    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $QrWindowScript)) {
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath $QrWindowScript -ProcessSnapshot $processSnapshot)) {
         [void]$targets.Add($proc)
     }
-    foreach ($proc in @(Get-TunnelProcesses)) {
+    foreach ($proc in @(Get-TunnelProcesses -ProcessSnapshot $processSnapshot)) {
         [void]$targets.Add($proc)
     }
 
@@ -644,7 +656,15 @@ function Resolve-TunnelLauncher {
 }
 
 function Get-TunnelProcesses {
-    return @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    param([object[]]$ProcessSnapshot = @())
+
+    $source = if ($ProcessSnapshot -and $ProcessSnapshot.Count -gt 0) {
+        $ProcessSnapshot
+    } else {
+        @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    }
+
+    return @($source | Where-Object {
         $_.CommandLine -and (
             $_.CommandLine -match '(?i)localtunnel.*--port\s+8000(\s|$)' -or
             $_.CommandLine -match '(?i)localtunnel.*--port\s+8765(\s|$)' -or
@@ -703,7 +723,8 @@ function Start-LocalTunnelProcess {
     param(
         [int]$Port,
         [string]$StdOutPath,
-        [string]$StdErrPath
+        [string]$StdErrPath,
+        [int]$WaitSeconds = 6
     )
 
     $launcher = Resolve-TunnelLauncher
@@ -738,7 +759,7 @@ function Start-LocalTunnelProcess {
             -RedirectStandardError $StdErrPath | Out-Null
     }
 
-    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds 20
+    $url = Wait-TunnelUrl -LogPath $StdOutPath -TimeoutSeconds $WaitSeconds
     if ([string]::IsNullOrWhiteSpace($url)) {
         $errPreview = ""
         if (Test-Path $StdErrPath) {
@@ -762,12 +783,14 @@ function Get-ShareEndpoints {
         [string]$DirectIpUrl,
         [int]$HttpPort,
         [int]$WsPort,
-        [string]$SessionToken
+        [string]$SessionToken,
+        $NetworkProfile = $null,
+        [int]$TunnelWaitSeconds = 6
     )
 
     $statusWsUrl = "ws://127.0.0.1:$WsPort"
     $preferredLanUrl = if (-not [string]::IsNullOrWhiteSpace($DirectUrl)) { $DirectUrl } else { $DirectIpUrl }
-    $networkProfile = Get-PrimaryNetworkProfile
+    $networkProfile = if ($NetworkProfile) { $NetworkProfile } else { Get-PrimaryNetworkProfile }
     $preferTunnel = $false
     if ($networkProfile -and $networkProfile.NetworkCategory -eq "Public") {
         $preferTunnel = $true
@@ -791,7 +814,7 @@ function Get-ShareEndpoints {
         Write-Log ("Cleaned previous tunnel processes: {0}" -f $stoppedTunnels)
     }
 
-    $publicHttpUrl = Start-LocalTunnelProcess -Port $HttpPort -StdOutPath $TunnelHttpOutLog -StdErrPath $TunnelHttpErrLog
+    $publicHttpUrl = Start-LocalTunnelProcess -Port $HttpPort -StdOutPath $TunnelHttpOutLog -StdErrPath $TunnelHttpErrLog -WaitSeconds $TunnelWaitSeconds
     if ([string]::IsNullOrWhiteSpace($publicHttpUrl)) {
         Write-Log "Tunnel mode unavailable, fallback to direct LAN address."
         return [pscustomobject]@{
@@ -815,6 +838,75 @@ function Get-ShareEndpoints {
         StatusWsUrl = $statusWsUrl
         PreferTunnel = $true
         NetworkProfile = $networkProfile
+    }
+}
+
+function Get-CurrentAppVersion {
+    if (-not (Test-Path $AppVersionFile)) {
+        return ""
+    }
+
+    try {
+        return (Get-Content -Raw -LiteralPath $AppVersionFile -Encoding UTF8).Trim()
+    } catch {
+        return ""
+    }
+}
+
+function Read-ShortcutState {
+    if (-not (Test-Path $ShortcutStateFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $ShortcutStateFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Write-ShortcutState {
+    param([string]$AppVersion)
+
+    $payload = [ordered]@{
+        appVersion = $AppVersion
+        checkedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    }
+
+    $payload | ConvertTo-Json -Compress | Set-Content -Path $ShortcutStateFile -Encoding UTF8
+}
+
+function Should-EnsureDesktopShortcut {
+    if (-not (Test-Path $DesktopShortcut)) {
+        return $true
+    }
+
+    $state = Read-ShortcutState
+    $currentVersion = Get-CurrentAppVersion
+
+    if (-not $state) {
+        return $true
+    }
+
+    $savedVersion = ""
+    if ($null -ne $state.PSObject.Properties["appVersion"] -and $state.appVersion) {
+        $savedVersion = [string]$state.appVersion
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($currentVersion) -and $savedVersion -ne $currentVersion) {
+        return $true
+    }
+
+    if ($null -eq $state.PSObject.Properties["checkedAt"] -or [string]::IsNullOrWhiteSpace([string]$state.checkedAt)) {
+        return $true
+    }
+
+    try {
+        $checkedAt = [datetime]::ParseExact([string]$state.checkedAt, "yyyy-MM-dd HH:mm:ss", $null)
+        $hours = ((Get-Date) - $checkedAt).TotalHours
+        return $hours -ge 24
+    } catch {
+        return $true
     }
 }
 
@@ -1432,7 +1524,7 @@ function Update-ShareArtifacts {
 
 try {
     Write-Log "=== portable-start.ps1 started ==="
-    Show-Stage -Title "正在准备启动环境" -Detail "通常只要几秒，请稍候。" -Emoji "🚀" -Color "Yellow" -Percent 8
+    Show-Stage -Title "正在准备启动环境" -Detail "通常约 8-20 秒，网络较慢时可能到 30 秒。" -Emoji "🚀" -Color "Yellow" -Percent 8
     $forceFreshSession = $false
 
     if (-not (Enter-StartupMutex)) {
@@ -1488,9 +1580,16 @@ try {
             Write-Log ("Legacy cleanup summary: found={0} stopped={1}" -f $legacyCleanup.Found, $legacyCleanup.Stopped)
         }
 
-        Show-Stage -Title "正在检查桌面快捷方式" -Detail "只在需要时才会更新桌面入口。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
-        $shortcutOk = Ensure-DesktopShortcut
-        Write-Log ("Desktop shortcut status: {0}" -f $shortcutOk)
+        if (Should-EnsureDesktopShortcut) {
+            Show-Stage -Title "正在检查桌面快捷方式" -Detail "只在需要时才会更新桌面入口。" -Emoji "🪄" -Color "DarkCyan" -Percent 16
+            $shortcutOk = Ensure-DesktopShortcut
+            Write-Log ("Desktop shortcut status: {0}" -f $shortcutOk)
+            if ($shortcutOk) {
+                Write-ShortcutState -AppVersion (Get-CurrentAppVersion)
+            }
+        } else {
+            Write-Log "Desktop shortcut check skipped: recent and same version."
+        }
     } catch {
         Write-Log ("Desktop shortcut failed: " + $_.Exception.Message)
     }
@@ -1579,7 +1678,7 @@ try {
     $directIpUrl = ""
 
     Show-Stage -Title "正在准备手机地址" -Detail "热点网络下会自动补一个更稳的兼容地址。" -Emoji "🛰️" -Color "DarkCyan" -Percent 72
-    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken
+    $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -NetworkProfile $networkProfile -TunnelWaitSeconds 5
     $url = $shareEndpoints.PrimaryUrl
     Write-RuntimeConfig -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken -DirectUrl $shareEndpoints.DirectUrl -DirectIpUrl $shareEndpoints.DirectIpUrl -PublicHttpUrl $shareEndpoints.PublicHttpUrl -PublicWsUrl $shareEndpoints.PublicWsUrl
 
