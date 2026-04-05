@@ -109,6 +109,37 @@ function Write-UpdateStatus {
     $payload | ConvertTo-Json -Compress | Set-Content -LiteralPath $UpdateStatusFile -Encoding UTF8
 }
 
+function Get-ReleaseInfoFromRedirect {
+    $request = [System.Net.HttpWebRequest]::Create($FallbackReleaseUrl)
+    $request.Method = "GET"
+    $request.UserAgent = "VoiceInputSync"
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 8000
+
+    $response = $null
+    try {
+        $response = $request.GetResponse()
+        $location = [string]$response.Headers["Location"]
+        if ([string]::IsNullOrWhiteSpace($location)) {
+            return $null
+        }
+
+        $absoluteUrl = if ($location -match '^https?://') { $location } else { ([Uri]([Uri]$FallbackReleaseUrl, $location)).AbsoluteUri }
+        if ($absoluteUrl -match '/tag/v(?<tag>[^/?#]+)') {
+            return [pscustomobject]@{
+                latestVersion = Normalize-Version $matches['tag']
+                releaseUrl = $absoluteUrl
+            }
+        }
+    } finally {
+        if ($response) {
+            $response.Dispose()
+        }
+    }
+
+    return $null
+}
+
 $buildInfo = Read-BuildInfo
 $currentVersion = ""
 if ($buildInfo) {
@@ -152,5 +183,21 @@ try {
 
     Write-UpdateStatus -CurrentVersion $currentVersion -LatestVersion $latestVersion -HasUpdate $hasUpdate -ReleaseUrl $releaseUrl -State "success" -CheckedAt $checkedStamp
 } catch {
-    Write-UpdateStatus -CurrentVersion $currentVersion -LatestVersion "" -HasUpdate $false -ReleaseUrl $FallbackReleaseUrl -State "error" -CheckedAt $checkedStamp -ErrorMessage $_.Exception.Message
+    $errorMessage = $_.Exception.Message
+    $redirectInfo = $null
+    try {
+        $redirectInfo = Get-ReleaseInfoFromRedirect
+    } catch {
+        $redirectInfo = $null
+    }
+
+    if ($redirectInfo -and -not [string]::IsNullOrWhiteSpace([string]$redirectInfo.latestVersion)) {
+        $hasUpdate = $false
+        if (-not [string]::IsNullOrWhiteSpace($currentVersion)) {
+            $hasUpdate = ((Compare-Version -Left ([string]$redirectInfo.latestVersion) -Right $currentVersion) -gt 0)
+        }
+        Write-UpdateStatus -CurrentVersion $currentVersion -LatestVersion ([string]$redirectInfo.latestVersion) -HasUpdate $hasUpdate -ReleaseUrl ([string]$redirectInfo.releaseUrl) -State "success" -CheckedAt $checkedStamp
+    } else {
+        Write-UpdateStatus -CurrentVersion $currentVersion -LatestVersion "" -HasUpdate $false -ReleaseUrl $FallbackReleaseUrl -State "error" -CheckedAt $checkedStamp -ErrorMessage $errorMessage
+    }
 }
