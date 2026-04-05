@@ -1,4 +1,4 @@
-param(
+﻿param(
     [switch]$NoAutoClose
 )
 
@@ -37,9 +37,9 @@ $script:WindowShownAt = $null
 $script:SuccessSeenAt = $null
 $script:LastNetworkHint = ""
 $script:TipMessages = @(
-    "The page opens automatically when the service is ready.",
-    "If the app is already running, this launch reuses the current session.",
-    "Keep your phone and PC on the same Wi-Fi for the smoothest sync."
+    "准备好后会自动弹出扫码页。",
+    "如果已经在运行，这次会直接复用当前会话。",
+    "手机和电脑连同一个 Wi-Fi 会更顺手。"
 )
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
@@ -130,10 +130,10 @@ function Invoke-ShellOpen {
         $psi.FileName = $resolvedTarget
         $psi.UseShellExecute = $true
         [System.Diagnostics.Process]::Start($psi) | Out-Null
-        Write-UiLog ("Opened target: {0}" -f $resolvedTarget)
+        Write-UiLog ("已打开: {0}" -f $resolvedTarget)
         return $true
     } catch {
-        Write-UiLog ("Open failed: " + $_.Exception.Message)
+        Write-UiLog ("打开失败: " + $_.Exception.Message)
         return $false
     }
 }
@@ -150,7 +150,7 @@ function Copy-CurrentUrl {
     }
 
     [System.Windows.Clipboard]::SetText($value)
-    Write-UiLog "Copied current URL."
+    Write-UiLog "已复制手机地址。"
     return $true
 }
 
@@ -360,9 +360,9 @@ function Minimize-LauncherWindow {
     try {
         $script:MainWindow.ShowInTaskbar = $true
         $script:MainWindow.WindowState = [System.Windows.WindowState]::Minimized
-        Write-UiLog "Launcher minimized to taskbar."
+        Write-UiLog "启动窗口已缩到任务栏。"
     } catch {
-        Write-UiLog ("Minimize failed: " + $_.Exception.Message)
+        Write-UiLog ("缩到任务栏失败: " + $_.Exception.Message)
     }
 }
 
@@ -383,7 +383,7 @@ function Start-BackendLaunch {
     )
 
     $script:StartupProcess = Start-Process powershell.exe -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
-    Write-UiLog ("Spawned portable-start.ps1 PID={0}" -f $script:StartupProcess.Id)
+    Write-UiLog ("已拉起启动服务 PID={0}" -f $script:StartupProcess.Id)
 }
 
 function Arm-AutoMinimize {
@@ -406,7 +406,7 @@ function Arm-AutoMinimize {
     $script:CloseTimer.Stop()
     $script:CloseTimer.Interval = [TimeSpan]::FromSeconds($delaySeconds)
     $script:CloseTimer.Start()
-    Write-UiLog ("Auto minimize armed for {0}s." -f $delaySeconds)
+    Write-UiLog ("将在 {0} 秒后自动缩到任务栏。" -f $delaySeconds)
 }
 
 if (-not (Enter-LauncherMutex)) {
@@ -414,7 +414,7 @@ if (-not (Enter-LauncherMutex)) {
 }
 
 try {
-    Write-UiLog "Launcher opened."
+    Write-UiLog "启动窗口已打开。"
 
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -716,7 +716,7 @@ try {
         try {
             $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create([Uri]$IconPath)
         } catch {
-            Write-UiLog "Icon load skipped."
+            Write-UiLog "图标加载已跳过。"
         }
     }
 
@@ -768,7 +768,7 @@ try {
 
     $script:CopyButton.Add_Click({
         if (Copy-CurrentUrl) {
-            $script:FooterText.Text = "URL copied."
+            $script:FooterText.Text = "手机地址已复制。"
         }
     })
 
@@ -924,7 +924,7 @@ try {
                 $networkHintSignature = "{0} || {1}" -f $script:TipText.Text, $script:FooterText.Text
                 if ($networkHintSignature -ne $script:LastNetworkHint) {
                     $script:LastNetworkHint = $networkHintSignature
-                    Write-UiLog ("Network hint: {0}" -f $networkHintSignature)
+                    Write-UiLog ("连接提示: {0}" -f $networkHintSignature)
                 }
                 return
             }
@@ -972,7 +972,7 @@ try {
     $window.Add_ContentRendered({
         if (-not $script:WindowShownAt) {
             $script:WindowShownAt = Get-Date
-            Write-UiLog "Launcher visible."
+            Write-UiLog "启动窗口已显示。"
             $launchTimer.Start()
         }
     })
@@ -982,7 +982,7 @@ try {
         $pollTimer.Stop()
         $closeTimer.Stop()
         $launchTimer.Stop()
-        Write-UiLog "Launcher closed."
+        Write-UiLog "启动窗口已关闭。"
         Exit-LauncherMutex
     })
 

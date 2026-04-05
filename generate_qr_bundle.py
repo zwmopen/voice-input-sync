@@ -548,24 +548,24 @@ def build_html(
                 <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
                 <button class="status-pill" type="button" id="connectionStatus">未连接</button>
             </div>
-            <h1>先扫局域网，再点中输入框，就能直接输入。</h1>
-            <p>上面先放局域网直连，自己手机热点给电脑，或者家里同一个 Wi-Fi，优先试这个。下面保留互联网地址当备用入口。每张卡里的二维码和地址都是一一对应的。</p>
-            <div class="status-note" id="statusNote">扫码后，电脑这里会自动变成已连接。优先试上面的局域网直连，不通时再切到下面的互联网地址。</div>
+            <h1>先连局域网，连上后回电脑点中输入框。</h1>
+            <p>上面是局域网直连，自己手机热点给电脑，或者家里同一个 Wi-Fi，优先试这个。下面保留互联网地址做备用。</p>
+            <div class="status-note" id="statusNote">连上后，这里会变成“已连接”。</div>
             <div class="guide-steps">
                 <div class="guide-step">
                     <div class="guide-index">1</div>
-                    <div class="guide-title">扫码或打开地址</div>
-                    <div class="guide-text">先试上面的局域网直连；如果局域网打不开，再切到下面的互联网地址。</div>
+                    <div class="guide-title">先扫局域网</div>
+                    <div class="guide-text">优先试上面的局域网直连；只有本地打不开时，再用下面的互联网地址。</div>
                 </div>
                 <div class="guide-step">
                     <div class="guide-index">2</div>
-                    <div class="guide-title">看到已连接</div>
-                    <div class="guide-text">手机打开后，电脑这里会从“未连接”变成“已连接”，说明这次连接已经打通。</div>
+                    <div class="guide-title">等它变已连接</div>
+                    <div class="guide-text">手机打开后，这里的状态会从“未连接”变成“已连接”。</div>
                 </div>
                 <div class="guide-step">
                     <div class="guide-index">3</div>
-                    <div class="guide-title">回电脑点输入框</div>
-                    <div class="guide-text">回到电脑，把光标点进你真正要输入的地方，然后就可以直接说话或打字了。</div>
+                    <div class="guide-title">回电脑开始输入</div>
+                    <div class="guide-text">把光标点进真正要输入的地方，然后直接说话或打字。</div>
                 </div>
             </div>
         </section>
@@ -700,12 +700,12 @@ def build_html(
 
             setConnectedState(mobileReady);
             if (!mobileReady) {{
-                setStatusNote("扫码后，电脑这里会自动变成已连接。");
+                setStatusNote("连上后，这里会变成“已连接”。");
                 return;
             }}
 
             if (desktopReady) {{
-                setStatusNote("已连接。现在回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。");
+                setStatusNote("已连接。回电脑点一下输入框，就可以开始输入。");
             }} else {{
                 setStatusNote("手机已连接，但电脑输入端还没准备好。请回电脑端检查启动状态。", "error");
             }}
