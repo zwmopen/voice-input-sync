@@ -1,44 +1,73 @@
-﻿# 语音输入同步
+# 语音输入同步
 
-这个项目用于把手机上的语音输入或文字输入，实时同步到电脑当前光标所在的输入框里，适合聊天、写文案、写笔记和轻量办公。
+把手机上的语音输入或文字输入，实时同步到电脑当前光标所在的输入框里。
 
-## 推荐启动方式
+适合这些场景：
 
-- 桌面双击 `语音输入同步-启动并打开地址.bat`
-- 或直接运行 [start.bat](D:\AICode\voice-input-sync\start.bat)
+- 手机给电脑开热点，自己一个人快速输入
+- 家里或办公室同一个 Wi-Fi 下，把手机当无线语音键盘
+- 聊天、写文案、记笔记、填表、轻办公
 
-启动后会自动完成这些事情：
+## 下载
 
-- 启动手机页面服务，端口 `8000`
-- 启动 WebSocket 服务，端口 `8765`
-- 启动桌面输入客户端
-- 自动计算当前局域网手机访问地址
-- 自动打开浏览器，并把地址复制到剪贴板
+- 安装版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup.exe`
+- 绿色版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable.zip`
 
-## 主要文件
+## 怎么用
 
-- [autostart.ps1](D:\AICode\voice-input-sync\autostart.ps1)：后台核心启动脚本
-- [launch-ui.ps1](D:\AICode\voice-input-sync\launch-ui.ps1)：带中文提示的前台启动脚本
-- [start.bat](D:\AICode\voice-input-sync\start.bat)：推荐使用的稳定入口
-- [启动并打开手机地址.bat](D:\AICode\voice-input-sync\启动并打开手机地址.bat)：中文别名入口
-- [latest-url.txt](D:\AICode\voice-input-sync\latest-url.txt)：最近一次生成的手机访问地址
-- [logs\startup.log](D:\AICode\voice-input-sync\logs\startup.log)：启动日志
+1. 在电脑上双击启动 `语音输入同步`
+2. 等启动页出现，扫码页会自动打开
+3. 手机上先试“局域网直连”，不通时再用“互联网备用”
+4. 电脑扫码页变成 `已连接` 后，回电脑点中真正要输入的输入框
+5. 开始在手机上说话或打字，内容会同步到电脑
 
-## 手机怎么打开
+## 连接方式
 
-双击启动后，浏览器会自动打开，同时项目会把手机地址写入 [latest-url.txt](D:\AICode\voice-input-sync\latest-url.txt)。
+### 1. 局域网直连
 
-地址通常长这样：
+默认优先。
 
-```text
-http://你的局域网IP:8000/mobile.html
-```
+适合这些情况：
 
-只要手机和电脑在同一个局域网里，就可以直接打开这个地址。
+- 手机给电脑开热点
+- 手机和电脑连同一个 Wi-Fi
+- 想要更直接、更快的输入体验
 
-## 这次修复了什么
+### 2. 互联网备用
 
-- 修复了入口脚本在 `cmd` 下解析异常的问题
-- 统一了桌面入口和项目入口的启动链路
-- 重写了中文说明，避免再出现大片乱码
-- 保留了开机自启能力，同时避免重复启动多个实例
+当局域网直连打不开时，扫码页会保留一个互联网备用地址。
+
+适合这些情况：
+
+- 当前网络环境比较怪
+- 局域网访问被限制
+- 你只是想先用起来，不想排查网络
+
+## 现在这版的体验
+
+- 启动时会先显示桌面启动页，不会只剩后台悄悄跑
+- 启动后会自动打开扫码页
+- 启动成功后会自动缩到任务栏
+- 托盘右键可以重新打开二维码界面或手机页面
+- 扫码页是局域网优先、互联网备用的双入口
+- 手机页按钮已经收紧，更适合直接输入
+
+## 常见提醒
+
+- 如果手机能打开页面，但输入没有同步到电脑，先回电脑点一下真正的输入框
+- 如果电脑输入权限不够，改用管理员方式启动
+- 如果同一个网络下手机打不开局域网地址，再试扫码页下面的互联网备用入口
+
+## 仓库里最重要的文件
+
+- `mobile.html`：手机输入页
+- `generate_qr_bundle.py`：扫码页生成逻辑
+- `portable-launch-ui.ps1`：桌面启动窗口
+- `portable-start.ps1`：启动总控脚本
+- `portable-tray.ps1`：托盘常驻入口
+- `build-portable.ps1`：绿色版打包
+- `build-installer.ps1`：安装版打包
+
+## 说明
+
+当前应用图标使用了第三方图标资源，授权信息保存在 [`assets/voice-sync-icon-license.txt`](assets/voice-sync-icon-license.txt)。
