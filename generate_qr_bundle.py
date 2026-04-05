@@ -115,28 +115,28 @@ def build_html(
     else:
         lan_qr_src = ""
 
-    online_featured = bool(online_url)
-    lan_featured = not online_featured and bool(lan_url)
+    lan_featured = bool(lan_url)
+    online_featured = (not lan_featured) and bool(online_url)
 
     online_card = build_access_card(
         card_id="online",
         title="互联网地址",
-        subtitle="不在同一局域网时优先用这个",
+        subtitle="局域网打不开时，再试这个互联网地址",
         url=online_url,
         active=bool(online_url),
         featured=online_featured,
-        badge_text="推荐地址" if online_featured else "互联网地址",
+        badge_text="推荐地址" if online_featured else "互联网备用",
         tone="accent",
         qr_src=online_qr_src,
     )
     lan_card = build_access_card(
         card_id="lan",
         title="局域网直连",
-        subtitle="自己手机热点 / 家里网络更适合",
+        subtitle="自己手机热点 / 家里 Wi-Fi 时优先试这个",
         url=lan_url,
         active=bool(lan_url),
         featured=lan_featured,
-        badge_text="当前可用" if lan_featured else "局域网直连",
+        badge_text="推荐地址" if lan_featured else "局域网直连",
         tone="green",
         qr_src=lan_qr_src,
     )
@@ -511,13 +511,13 @@ def build_html(
     <main class="shell">
         <section class="hero">
             <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
-            <h1>先扫码，再点中输入框，就能直接输入。</h1>
-            <p>互联网地址适合任何网络直接打开。局域网直连更适合你自己手机热点给电脑，或者家里同一个 Wi-Fi。每张卡里的二维码和地址是一一对应的，选一个能打开的入口就行。</p>
+            <h1>先扫局域网，再点中输入框，就能直接输入。</h1>
+            <p>上面先放局域网直连，自己手机热点给电脑，或者家里同一个 Wi-Fi，优先试这个。下面保留互联网地址当备用入口。每张卡里的二维码和地址都是一一对应的。</p>
             <div class="guide-steps">
                 <div class="guide-step">
                     <div class="guide-index">1</div>
                     <div class="guide-title">扫码或打开地址</div>
-                    <div class="guide-text">优先试互联网地址；如果你和电脑在同一个热点或 Wi-Fi，也可以直接用局域网直连。</div>
+                    <div class="guide-text">先试上面的局域网直连；如果局域网打不开，再切到下面的互联网地址。</div>
                 </div>
                 <div class="guide-step">
                     <div class="guide-index">2</div>
@@ -535,13 +535,13 @@ def build_html(
         <section class="status-shell">
             <div class="status-label">连接状态</div>
             <button class="status-button" type="button" id="connectionStatus">等待连接</button>
-            <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。输入成功或失败，也会在这里给你反馈。</div>
+            <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。优先试上面的局域网直连，不通时再切到下面的互联网地址。</div>
             <div class="meta">生成时间：{generated_at}</div>
         </section>
 
         <section class="access-shell">
-{online_card}
 {lan_card}
+{online_card}
         </section>
     </main>
 

@@ -606,7 +606,7 @@ function Get-ShareEndpoints {
     }
 
     return [pscustomobject]@{
-        PrimaryUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
+        PrimaryUrl = if (-not [string]::IsNullOrWhiteSpace($preferredLanUrl)) { $preferredLanUrl } else { $publicHttpUrl.TrimEnd('/') + "/mobile.html" }
         DirectUrl = $DirectUrl
         DirectIpUrl = $DirectIpUrl
         PublicHttpUrl = $publicHttpUrl.TrimEnd('/') + "/mobile.html"
@@ -1148,15 +1148,15 @@ function Update-ShareArtifacts {
         "当前推荐地址："
         $RecommendedUrl
         ""
-        "互联网地址："
-        $(if ([string]::IsNullOrWhiteSpace($OnlineUrl)) { "（当前这次启动还没拿到互联网地址）" } else { $OnlineUrl })
-        ""
         "局域网直连地址："
         $(if ([string]::IsNullOrWhiteSpace($LanUrl)) { "（当前没有单独的局域网地址）" } else { $LanUrl })
         ""
+        "互联网地址："
+        $(if ([string]::IsNullOrWhiteSpace($OnlineUrl)) { "（当前这次启动还没拿到互联网地址）" } else { $OnlineUrl })
+        ""
         "使用提醒"
-        "1. 互联网地址适合不在同一局域网时使用"
-        "2. 如果你就是自己手机给自己电脑开热点，优先试上面的局域网直连地址"
+        "1. 先试上面的局域网直连地址"
+        "2. 如果局域网打不开，再试下面的互联网地址"
         "3. 先把电脑光标点到你要输入的位置"
         "4. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
     ) -join "`r`n"
