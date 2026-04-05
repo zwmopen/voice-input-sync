@@ -20,6 +20,7 @@ $uninstallRegistryKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninsta
 $tempExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ("voice-input-sync-install-" + [guid]::NewGuid().ToString("N"))
 $iconPath = Join-Path $installDir "_runtime\assets\voice-sync-icon.ico"
 $launcherBat = Join-Path $installDir "双击启动语音输入同步.bat"
+$launcherVbs = Join-Path $installDir "启动语音输入同步.vbs"
 $uninstallScript = Join-Path $installDir "uninstall.ps1"
 $uninstallBat = Join-Path $installDir "卸载语音输入同步.bat"
 
@@ -67,7 +68,7 @@ New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 New-Item -ItemType Directory -Path $startMenuDir -Force | Out-Null
 
 try {
-    if (Test-Path $launcherBat) {
+    if ((Test-Path $launcherBat) -or (Test-Path $launcherVbs)) {
         try {
             $stopScript = Join-Path $installDir "_runtime\portable-stop.ps1"
             if (Test-Path $stopScript) {
@@ -121,8 +122,15 @@ try {
     ) -join "`r`n"
     [System.IO.File]::WriteAllText($uninstallBat, (($uninstallBatContent -split "`r?`n") -join "`r`n"), [System.Text.UTF8Encoding]::new($true))
 
-    New-Shortcut -ShortcutPath $desktopShortcutPath -TargetPath $launcherBat -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
-    New-Shortcut -ShortcutPath $startMenuShortcutPath -TargetPath $launcherBat -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
+    $launcherTargetPath = $launcherBat
+    $launcherArguments = ""
+    if (Test-Path $launcherVbs) {
+        $launcherTargetPath = (Get-Command wscript.exe).Source
+        $launcherArguments = ('//nologo "{0}"' -f $launcherVbs)
+    }
+
+    New-Shortcut -ShortcutPath $desktopShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
+    New-Shortcut -ShortcutPath $startMenuShortcutPath -TargetPath $launcherTargetPath -Arguments $launcherArguments -WorkingDirectory $installDir -IconLocation $iconPath -Description $productName
     New-Shortcut -ShortcutPath $uninstallShortcutPath -TargetPath $uninstallBat -WorkingDirectory $installDir -IconLocation $iconPath -Description ("卸载" + $productName)
 
     New-Item -Path $uninstallRegistryKey -Force | Out-Null
@@ -135,7 +143,9 @@ try {
     New-ItemProperty -Path $uninstallRegistryKey -Name "NoModify" -Value 1 -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $uninstallRegistryKey -Name "NoRepair" -Value 1 -PropertyType DWord -Force | Out-Null
 
-    if ($LaunchAfterInstall -and (Test-Path $launcherBat)) {
+    if ($LaunchAfterInstall -and (Test-Path $launcherVbs)) {
+        Start-Process -FilePath (Get-Command wscript.exe).Source -ArgumentList @("//nologo", $launcherVbs) | Out-Null
+    } elseif ($LaunchAfterInstall -and (Test-Path $launcherBat)) {
         Start-Process -FilePath $launcherBat | Out-Null
     }
 

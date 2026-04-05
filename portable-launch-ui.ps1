@@ -30,6 +30,10 @@ $script:CurrentTarget = ""
 $script:CurrentState = "running"
 $script:CurrentPercent = 12
 $script:ProgressTarget = 18
+$script:StartupProcess = $null
+$script:CloseTimer = $null
+$script:LaunchRequested = $false
+$script:WindowShownAt = $null
 $script:SuccessSeenAt = $null
 $script:LastNetworkHint = ""
 $script:TipMessages = @(
@@ -362,12 +366,13 @@ function Minimize-LauncherWindow {
     }
 }
 
-if (-not (Enter-LauncherMutex)) {
-    exit 0
-}
+function Start-BackendLaunch {
+    if ($script:LaunchRequested) {
+        return
+    }
 
-try {
-    Write-UiLog "Launcher opened."
+    $script:LaunchRequested = $true
+    Remove-Item -LiteralPath $StatusFile -Force -ErrorAction SilentlyContinue
 
     $startupArgs = @(
         "-NoProfile",
@@ -376,8 +381,40 @@ try {
         "-Silent",
         "-OpenPageOnSuccess"
     )
-    $StartupProcess = Start-Process powershell.exe -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
-    Write-UiLog ("Spawned portable-start.ps1 PID={0}" -f $StartupProcess.Id)
+
+    $script:StartupProcess = Start-Process powershell.exe -ArgumentList $startupArgs -WindowStyle Hidden -PassThru
+    Write-UiLog ("Spawned portable-start.ps1 PID={0}" -f $script:StartupProcess.Id)
+}
+
+function Arm-AutoMinimize {
+    param(
+        [int]$MinimumVisibleSeconds = 10,
+        [int]$PostSuccessSeconds = 6
+    )
+
+    if (-not $script:CloseTimer) {
+        return
+    }
+
+    $shownElapsedSeconds = 0
+    if ($script:WindowShownAt) {
+        $shownElapsedSeconds = [int]([Math]::Floor(((Get-Date) - $script:WindowShownAt).TotalSeconds))
+    }
+
+    $remainingMinimum = [Math]::Max(0, $MinimumVisibleSeconds - $shownElapsedSeconds)
+    $delaySeconds = [Math]::Max($PostSuccessSeconds, $remainingMinimum)
+    $script:CloseTimer.Stop()
+    $script:CloseTimer.Interval = [TimeSpan]::FromSeconds($delaySeconds)
+    $script:CloseTimer.Start()
+    Write-UiLog ("Auto minimize armed for {0}s." -f $delaySeconds)
+}
+
+if (-not (Enter-LauncherMutex)) {
+    exit 0
+}
+
+try {
+    Write-UiLog "Launcher opened."
 
     [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -608,11 +645,23 @@ try {
                                     Background="#D8E0E9"
                                     CornerRadius="9"
                                     SnapsToDevicePixels="True">
-                                <Border x:Name="ProgressFill"
-                                        HorizontalAlignment="Left"
-                                        Width="82"
-                                        Background="#D07F2A"
-                                        CornerRadius="9"/>
+                                <Grid ClipToBounds="True">
+                                    <Border x:Name="ProgressFill"
+                                            HorizontalAlignment="Left"
+                                            Width="82"
+                                            Background="#D07F2A"
+                                            CornerRadius="9"/>
+                                    <Border x:Name="ProgressShimmer"
+                                            Width="110"
+                                            HorizontalAlignment="Left"
+                                            CornerRadius="9"
+                                            Background="#45FFFFFF"
+                                            IsHitTestVisible="False">
+                                        <Border.RenderTransform>
+                                            <TranslateTransform X="-140"/>
+                                        </Border.RenderTransform>
+                                    </Border>
+                                </Grid>
                             </Border>
 
                             <TextBlock x:Name="FooterText"
@@ -647,8 +696,8 @@ try {
                                     Margin="0,0,12,0"
                                     Visibility="Collapsed"/>
                             <Button x:Name="CloseButton"
-                                    Content="&#x6700;&#x5C0F;&#x5316;"
-                                    Width="110"
+                                    Content="&#x7F29;&#x5230;&#x4EFB;&#x52A1;&#x680F;"
+                                    Width="136"
                                     Height="44"/>
                         </StackPanel>
                     </Grid>
@@ -686,6 +735,7 @@ try {
     $script:FooterText = $window.FindName("FooterText")
     $script:ProgressTrack = $window.FindName("ProgressTrack")
     $script:ProgressFill = $window.FindName("ProgressFill")
+    $script:ProgressShimmer = $window.FindName("ProgressShimmer")
     $script:StageChipOne = $window.FindName("StageChipOne")
     $script:StageChipTwo = $window.FindName("StageChipTwo")
     $script:StageChipThree = $window.FindName("StageChipThree")
@@ -757,14 +807,18 @@ try {
             $pulse = (($script:AnimationTick % 12) + 1) / 12.0
             $script:HeroAccent.Opacity = 0.14 + ($pulse * 0.16)
             if (($script:AnimationTick % 2) -eq 0) {
-                $script:HeroEmoji.Text = [string][char]0x1F4AB
+                $script:HeroEmoji.Text = Get-Text @(0xD83D, 0xDCAB)
             } else {
-                $script:HeroEmoji.Text = [string][char]0x2728
+                $script:HeroEmoji.Text = Get-Text @(0x2728)
             }
             if (($script:AnimationTick % 10) -eq 0) {
                 $index = [int](($script:AnimationTick / 10) % $script:TipMessages.Count)
                 $script:TipText.Text = $script:TipMessages[$index]
             }
+
+            $trackWidth = [Math]::Max(120, $script:ProgressTrack.ActualWidth)
+            $shimmerOffset = (($script:AnimationTick * 16) % ([int]($trackWidth + 160))) - 140
+            $script:ProgressShimmer.RenderTransform.X = $shimmerOffset
 
             $targetPercent = [Math]::Max($script:ProgressTarget, 26)
             if ($script:CurrentPercent -lt $targetPercent) {
@@ -778,10 +832,18 @@ try {
     })
 
     $closeTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $script:CloseTimer = $closeTimer
     $closeTimer.Interval = [TimeSpan]::FromMilliseconds(10000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
         Minimize-LauncherWindow
+    })
+
+    $launchTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $launchTimer.Interval = [TimeSpan]::FromMilliseconds(180)
+    $launchTimer.Add_Tick({
+        $launchTimer.Stop()
+        Start-BackendLaunch
     })
 
     $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -804,14 +866,14 @@ try {
                 Set-BadgeState -State "success"
                 Update-Chips -State "success" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
-                $script:CloseButton.Content = Get-Text @(0x6700,0x5C0F,0x5316)
+                $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 if (-not $script:SuccessSeenAt) {
                     $script:SuccessSeenAt = Get-Date
                     if (-not $NoAutoClose -and -not $script:AutoMinimizeArmed) {
                         $script:AutoMinimizeArmed = $true
-                        $closeTimer.Start()
+                        Arm-AutoMinimize
                     }
                 }
                 $script:OpenButton.Visibility = "Visible"
@@ -884,7 +946,7 @@ try {
             Set-BadgeState -State "running"
             Update-Chips -State "running" -Percent $percent
             Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
-            $script:CloseButton.Content = Get-Text @(0x6700,0x5C0F,0x5316)
+            $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
             }
@@ -898,7 +960,7 @@ try {
             return
         }
 
-        if ($StartupProcess -and $StartupProcess.HasExited) {
+        if ($script:StartupProcess -and $script:StartupProcess.HasExited) {
             $script:CurrentState = "error"
             Set-BadgeState -State "error"
             Update-Chips -State "error" -Percent 100
@@ -907,10 +969,19 @@ try {
         }
     })
 
+    $window.Add_ContentRendered({
+        if (-not $script:WindowShownAt) {
+            $script:WindowShownAt = Get-Date
+            Write-UiLog "Launcher visible."
+            $launchTimer.Start()
+        }
+    })
+
     $window.Add_Closed({
         $animationTimer.Stop()
         $pollTimer.Stop()
         $closeTimer.Stop()
+        $launchTimer.Stop()
         Write-UiLog "Launcher closed."
         Exit-LauncherMutex
     })

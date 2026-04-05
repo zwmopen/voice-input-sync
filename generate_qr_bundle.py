@@ -5,7 +5,6 @@ import base64
 import html
 import io
 import json
-from datetime import datetime
 from pathlib import Path
 
 import qrcode
@@ -98,7 +97,6 @@ def build_html(
 ) -> str:
     host = recommended_url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
     ws_url = status_ws_url or f"ws://{host}:{ws_port}"
-    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     main_qr_src = html.escape(svg_filename)
 
     if recommended_url == online_url and online_url:
@@ -261,36 +259,49 @@ def build_html(
             font-size: 14px;
         }}
 
-        .status-shell {{
-            display: grid;
-            gap: 14px;
+        .hero-top {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
         }}
 
-        .status-label {{
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--muted);
-        }}
-
-        .status-button {{
-            width: 100%;
+        .status-pill {{
             border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
             border-radius: 999px;
-            padding: 16px 18px;
-            font-size: 18px;
+            padding: 10px 16px;
+            font-size: 14px;
             font-weight: 800;
-            color: var(--accent);
-            background: var(--paper);
-            box-shadow: 8px 8px 16px rgba(176, 185, 197, 0.8), -8px -8px 16px rgba(255, 255, 255, 0.95);
+            color: var(--red);
+            background: rgba(196, 74, 69, 0.12);
+            box-shadow: 8px 8px 16px rgba(176, 185, 197, 0.7), -8px -8px 16px rgba(255, 255, 255, 0.92);
         }}
 
-        .status-button.connected {{
-            color: #fff;
-            background: linear-gradient(145deg, #6dc99a, #3da86f);
-            box-shadow: 8px 8px 18px rgba(61, 168, 111, 0.35), -8px -8px 16px rgba(255, 255, 255, 0.9);
+        .status-pill::before {{
+            content: "";
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 0 0 rgba(196, 74, 69, 0.34);
+            animation: pulse 1.6s infinite;
+        }}
+
+        .status-pill.connected {{
+            color: var(--green);
+            background: rgba(37, 134, 87, 0.14);
+        }}
+
+        .status-pill.connected::before {{
+            box-shadow: 0 0 0 0 rgba(37, 134, 87, 0.3);
         }}
 
         .status-note {{
+            margin-top: 16px;
             color: var(--muted);
             line-height: 1.75;
             font-size: 14px;
@@ -302,6 +313,21 @@ def build_html(
 
         .status-note.error {{
             color: var(--red);
+        }}
+
+        @keyframes pulse {{
+            0% {{
+                transform: scale(1);
+                box-shadow: 0 0 0 0 currentColor;
+            }}
+            70% {{
+                transform: scale(1.06);
+                box-shadow: 0 0 0 8px transparent;
+            }}
+            100% {{
+                transform: scale(1);
+                box-shadow: 0 0 0 0 transparent;
+            }}
         }}
 
         .access-shell {{
@@ -490,10 +516,18 @@ def build_html(
             }}
 
             .hero,
-            .status-shell,
             .access-shell {{
                 padding: 22px;
                 border-radius: 24px;
+            }}
+
+            .hero-top {{
+                align-items: flex-start;
+            }}
+
+            .status-pill {{
+                padding: 9px 14px;
+                font-size: 13px;
             }}
 
             .card-head {{
@@ -510,9 +544,13 @@ def build_html(
 <body>
     <main class="shell">
         <section class="hero">
-            <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
+            <div class="hero-top">
+                <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
+                <button class="status-pill" type="button" id="connectionStatus">未连接</button>
+            </div>
             <h1>先扫局域网，再点中输入框，就能直接输入。</h1>
             <p>上面先放局域网直连，自己手机热点给电脑，或者家里同一个 Wi-Fi，优先试这个。下面保留互联网地址当备用入口。每张卡里的二维码和地址都是一一对应的。</p>
+            <div class="status-note" id="statusNote">扫码后，电脑这里会自动变成已连接。优先试上面的局域网直连，不通时再切到下面的互联网地址。</div>
             <div class="guide-steps">
                 <div class="guide-step">
                     <div class="guide-index">1</div>
@@ -522,7 +560,7 @@ def build_html(
                 <div class="guide-step">
                     <div class="guide-index">2</div>
                     <div class="guide-title">看到已连接</div>
-                    <div class="guide-text">手机打开后，电脑这里会从“等待连接”变成“已连接”，说明这次连接已经打通。</div>
+                    <div class="guide-text">手机打开后，电脑这里会从“未连接”变成“已连接”，说明这次连接已经打通。</div>
                 </div>
                 <div class="guide-step">
                     <div class="guide-index">3</div>
@@ -530,13 +568,6 @@ def build_html(
                     <div class="guide-text">回到电脑，把光标点进你真正要输入的地方，然后就可以直接说话或打字了。</div>
                 </div>
             </div>
-        </section>
-
-        <section class="status-shell">
-            <div class="status-label">连接状态</div>
-            <button class="status-button" type="button" id="connectionStatus">等待连接</button>
-            <div class="status-note" id="statusNote">扫码以后，电脑这里会自动显示已连接。优先试上面的局域网直连，不通时再切到下面的互联网地址。</div>
-            <div class="meta">生成时间：{generated_at}</div>
         </section>
 
         <section class="access-shell">
@@ -631,12 +662,12 @@ def build_html(
         function setConnectedState(connected) {{
             if (connected) {{
                 connectionStatus.textContent = "已连接";
-                connectionStatus.className = "status-button connected";
+                connectionStatus.className = "status-pill connected";
                 return;
             }}
 
-            connectionStatus.textContent = "等待连接";
-            connectionStatus.className = "status-button";
+            connectionStatus.textContent = "未连接";
+            connectionStatus.className = "status-pill";
         }}
 
         function setStatusNote(message, tone = "normal") {{
@@ -669,7 +700,7 @@ def build_html(
 
             setConnectedState(mobileReady);
             if (!mobileReady) {{
-                setStatusNote("扫码以后，电脑这里会自动显示已连接。");
+                setStatusNote("扫码后，电脑这里会自动变成已连接。");
                 return;
             }}
 

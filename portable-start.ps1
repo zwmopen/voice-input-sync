@@ -19,6 +19,7 @@ $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
 $TrayScript = Join-Path $BaseDir "portable-tray.ps1"
 $StartBat = Join-Path $PackageDir "双击启动语音输入同步.bat"
+$LauncherVbs = Join-Path $PackageDir "启动语音输入同步.vbs"
 $LauncherScript = Join-Path $BaseDir "portable-launch-ui.ps1"
 $ShortcutIcon = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "语音输入同步.lnk"
@@ -621,7 +622,10 @@ function Ensure-DesktopShortcut {
     $shell = New-Object -ComObject WScript.Shell
     $targetPath = ""
     $arguments = ""
-    if (Test-Path $LauncherScript) {
+    if (Test-Path $LauncherVbs) {
+        $targetPath = (Get-Command wscript.exe).Source
+        $arguments = ('//nologo "{0}"' -f $LauncherVbs)
+    } elseif (Test-Path $LauncherScript) {
         $targetPath = (Get-Command powershell.exe).Source
         $arguments = ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $LauncherScript)
     } elseif (Test-Path $StartBat) {

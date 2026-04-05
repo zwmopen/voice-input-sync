@@ -366,10 +366,19 @@ $startBat = @"
 @echo off
 setlocal
 cd /d "%~dp0"
-start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0_runtime\portable-launch-ui.ps1"
+start "" wscript.exe //nologo "%~dp0启动语音输入同步.vbs"
 exit /b 0
 "@
 Write-TextFile -Path (Join-Path $packageRoot "双击启动语音输入同步.bat") -Content $startBat -Encoding $utf8Bom
+
+$startVbs = @"
+Set shell = CreateObject("WScript.Shell")
+Set fso = CreateObject("Scripting.FileSystemObject")
+baseDir = fso.GetParentFolderName(WScript.ScriptFullName)
+shell.CurrentDirectory = baseDir
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & baseDir & "\_runtime\portable-launch-ui.ps1""", 0, False
+"@
+Write-TextFile -Path (Join-Path $packageRoot "启动语音输入同步.vbs") -Content $startVbs -Encoding $asciiEncoding
 
 $adminBat = @"
 @echo off
