@@ -233,7 +233,7 @@ function Test-TcpPortListening {
     param(
         [int]$Port,
         [string]$Address = "127.0.0.1",
-        [int]$TimeoutMilliseconds = 400
+        [int]$TimeoutMilliseconds = 280
     )
 
     $client = $null
@@ -271,7 +271,7 @@ function Wait-PortReady {
         if (Test-TcpPortListening -Port $Port) {
             return $true
         }
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 180
     }
 
     return $false
@@ -364,7 +364,7 @@ function Wait-ProcessReady {
         if ((@(Get-ExecutableProcess -ExecutablePath $ExePath)).Length -gt 0) {
             return $true
         }
-        Start-Sleep -Milliseconds 300
+        Start-Sleep -Milliseconds 180
     }
 
     return $false
@@ -388,7 +388,7 @@ function Stop-ManagedProcesses {
         }
     }
 
-    Start-Sleep -Milliseconds 150
+    Start-Sleep -Milliseconds 80
     return $stopped
 }
 
@@ -496,7 +496,7 @@ function Stop-TunnelProcesses {
     }
 
     if ($stopped -gt 0) {
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 120
     }
 
     return $stopped
@@ -521,7 +521,7 @@ function Wait-TunnelUrl {
             }
         }
 
-        Start-Sleep -Milliseconds 400
+        Start-Sleep -Milliseconds 250
     }
 
     return ""

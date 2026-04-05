@@ -39,9 +39,9 @@ $script:WindowShownAt = $null
 $script:SuccessSeenAt = $null
 $script:LastNetworkHint = ""
 $script:TipMessages = @(
+    "会先找可用端口，再拉起同步服务。",
     "准备好后会自动弹出扫码页。",
-    "如果已经在运行，这次会直接复用当前会话。",
-    "手机和电脑连同一个 Wi-Fi 会更顺手。"
+    "如果已经在运行，这次会直接复用当前会话。"
 )
 
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
@@ -406,6 +406,40 @@ function Set-ProgressTarget {
     }
 }
 
+function Update-HeroCopy {
+    param(
+        [string]$State,
+        [int]$Percent
+    )
+
+    if ($State -eq "success") {
+        $script:HeroTitle.Text = "同步服务已经就绪"
+        $script:HeroSubtitle.Text = "扫码页已经准备好，稍后会自动收起到后台。"
+        return
+    }
+
+    if ($State -eq "error") {
+        $script:HeroTitle.Text = "这次启动没有完成"
+        $script:HeroSubtitle.Text = "可以先看右侧提示，必要时直接打开日志。"
+        return
+    }
+
+    if ($Percent -lt 36) {
+        $script:HeroTitle.Text = "正在准备启动环境"
+        $script:HeroSubtitle.Text = "先检查残留进程、快捷方式和基础运行环境。"
+        return
+    }
+
+    if ($Percent -lt 74) {
+        $script:HeroTitle.Text = "正在寻找端口并启动服务"
+        $script:HeroSubtitle.Text = "会自动挑可用端口，不会因为占用直接卡住。"
+        return
+    }
+
+    $script:HeroTitle.Text = "正在生成手机入口"
+    $script:HeroSubtitle.Text = "正在整理局域网地址、二维码和扫码页。"
+}
+
 function Minimize-LauncherWindow {
     if (-not $script:MainWindow) {
         return
@@ -620,14 +654,14 @@ try {
 
                         <StackPanel Grid.Row="2">
                             <TextBlock x:Name="HeroTitle"
-                                       Text="&#x6B63;&#x5728;&#x8FDE;&#x63A5;&#x684C;&#x9762;&#x548C;&#x624B;&#x673A;"
+                                       Text="&#x6B63;&#x5728;&#x51C6;&#x5907;&#x542F;&#x52A8;&#x73AF;&#x5883;"
                                        Margin="0,8,0,8"
                                        FontSize="28"
                                        FontWeight="Bold"
                                        Foreground="#2B3B4F"
                                        TextWrapping="Wrap"/>
                             <TextBlock x:Name="HeroSubtitle"
-                                       Text="&#x51C6;&#x5907;&#x597D;&#x540E;&#x4F1A;&#x81EA;&#x52A8;&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;&#x3002;"
+                                       Text="&#x4F1A;&#x5148;&#x68C0;&#x67E5;&#x6B8B;&#x7559;&#x8FDB;&#x7A0B;&#x3001;&#x7AEF;&#x53E3;&#x548C;&#x542F;&#x52A8;&#x73AF;&#x5883;&#x3002;"
                                        FontSize="16"
                                        Foreground="#6F7F94"
                                        TextWrapping="Wrap"/>
@@ -666,7 +700,7 @@ try {
                         <TextBlock x:Name="SubtitleText"
                                    Grid.Row="1"
                                    Margin="0,12,0,0"
-                                   Text="&#x901A;&#x5E38; 5 &#x5230; 10 &#x79D2;&#x5DE6;&#x53F3;&#xFF0C;&#x4F1A;&#x81EA;&#x52A8;&#x628A;&#x626B;&#x7801;&#x9875;&#x6253;&#x5F00;&#x7ED9;&#x4F60;&#x3002;"
+                                   Text="&#x4F1A;&#x5148;&#x627E;&#x53EF;&#x7528;&#x7AEF;&#x53E3;&#xFF0C;&#x518D;&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;&#x3002;"
                                    FontSize="18"
                                    Foreground="#6F7F94"
                                    TextWrapping="Wrap"/>
@@ -723,7 +757,7 @@ try {
                         <TextBlock x:Name="TipText"
                                    Grid.Row="4"
                                    Margin="0,14,0,0"
-                                   Text="&#x901A;&#x5E38;&#x53EA;&#x8981;&#x51E0;&#x79D2;&#xFF0C;&#x51C6;&#x5907;&#x597D;&#x540E;&#x4F1A;&#x81EA;&#x52A8;&#x6253;&#x5F00;&#x626B;&#x7801;&#x9875;&#x3002;"
+                                   Text="&#x6B63;&#x5E38;&#x60C5;&#x51B5;&#x4E0B;&#x53EA;&#x8981;&#x51E0;&#x79D2;&#x3002;"
                                    FontSize="16"
                                    Foreground="#6F7F94"
                                    TextWrapping="Wrap"/>
@@ -854,6 +888,7 @@ try {
     Set-BadgeState -State "running"
     Update-Chips -State "running" -Percent 12
     Update-ProgressFill -State "running" -Percent 12
+    Update-HeroCopy -State "running" -Percent 12
     Set-ProgressTarget -Percent 18
 
     $script:ProgressTrack.Add_SizeChanged({
@@ -898,7 +933,7 @@ try {
     })
 
     $animationTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $animationTimer.Interval = [TimeSpan]::FromMilliseconds(90)
+    $animationTimer.Interval = [TimeSpan]::FromMilliseconds(72)
     $animationTimer.Add_Tick({
         $script:AnimationTick++
         if ($script:CurrentState -eq "running") {
@@ -909,16 +944,16 @@ try {
             } else {
                 $script:HeroEmoji.Text = Get-Text @(0x2728)
             }
-            if (($script:AnimationTick % 10) -eq 0) {
-                $index = [int](($script:AnimationTick / 10) % $script:TipMessages.Count)
+            if (($script:AnimationTick % 8) -eq 0) {
+                $index = [int](($script:AnimationTick / 8) % $script:TipMessages.Count)
                 $script:TipText.Text = $script:TipMessages[$index]
             }
 
             $trackWidth = [Math]::Max(160, $script:ProgressTrack.ActualWidth)
             $travelWidth = [Math]::Max(220, [int]($trackWidth + $script:ProgressFill.Width + 30))
-            $segmentOffset = (($script:AnimationTick * 26) % $travelWidth) - $script:ProgressFill.Width
+            $segmentOffset = (($script:AnimationTick * 34) % $travelWidth) - $script:ProgressFill.Width
             $script:ProgressFill.RenderTransform.X = $segmentOffset
-            $script:ProgressShimmer.RenderTransform.X = $segmentOffset + 46
+            $script:ProgressShimmer.RenderTransform.X = $segmentOffset + 54
         }
     })
 
@@ -931,14 +966,14 @@ try {
     })
 
     $launchTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $launchTimer.Interval = [TimeSpan]::FromMilliseconds(180)
+    $launchTimer.Interval = [TimeSpan]::FromMilliseconds(60)
     $launchTimer.Add_Tick({
         $launchTimer.Stop()
         Start-BackendLaunch
     })
 
     $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $pollTimer.Interval = [TimeSpan]::FromMilliseconds(220)
+    $pollTimer.Interval = [TimeSpan]::FromMilliseconds(140)
     $pollTimer.Add_Tick({
         $status = Read-StartupStatus
         if ($status) {
@@ -958,6 +993,7 @@ try {
                 Update-Chips -State "success" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
                 Update-ProgressFill -State "success" -Percent 100
+                Update-HeroCopy -State "success" -Percent 100
                 $script:CloseButton.Content = "暂时收起"
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
@@ -1026,6 +1062,7 @@ try {
                 Update-Chips -State "error" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
                 Update-ProgressFill -State "error" -Percent 100
+                Update-HeroCopy -State "error" -Percent 100
                 $script:CloseButton.Content = Get-Text @(0x5173,0x95ED)
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
@@ -1040,6 +1077,7 @@ try {
             Update-Chips -State "running" -Percent $percent
             Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
             Update-ProgressFill -State "running" -Percent $percent
+            Update-HeroCopy -State "running" -Percent $percent
             $script:CloseButton.Content = "暂时收起"
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
@@ -1060,6 +1098,7 @@ try {
             Update-Chips -State "error" -Percent 100
             Set-ProgressTarget -Percent 100 -Immediate
             Update-ProgressFill -State "error" -Percent 100
+            Update-HeroCopy -State "error" -Percent 100
             $script:LogButton.Visibility = "Visible"
         }
     })

@@ -314,9 +314,10 @@ try {
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         ShowActivated="True"
+        Topmost="True"
+        Focusable="True"
         Background="Transparent"
         AllowsTransparency="True"
-        Topmost="True"
         WindowStartupLocation="Manual">
   <Window.Resources>
     <Style x:Key="MenuButtonStyle" TargetType="Button">
@@ -467,8 +468,18 @@ try {
         if (-not $popupWindow.IsVisible) {
             $popupWindow.Show()
         }
+        $popupWindow.Topmost = $true
         $popupWindow.Activate() | Out-Null
+        $popupWindow.Focus() | Out-Null
         Write-Log "Tray menu opened."
+    }
+
+    function Toggle-CustomMenu {
+        if ($script:PopupVisible) {
+            Hide-CustomMenu
+        } else {
+            Show-CustomMenu
+        }
     }
 
     $openQrAction = {
@@ -525,19 +536,20 @@ try {
     $copyButton.Add_Click($copyAction)
     $exitButton.Add_Click($exitAction)
 
-    $notifyIcon.Add_MouseUp({
+    $notifyIcon.Add_MouseClick({
         param($sender, $e)
 
-        if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
-            if ($script:PopupVisible) {
-                Hide-CustomMenu
-            } else {
-                Show-CustomMenu
-            }
+        if (
+            $e.Button -eq [System.Windows.Forms.MouseButtons]::Right -or
+            $e.Button -eq [System.Windows.Forms.MouseButtons]::Left
+        ) {
+            Toggle-CustomMenu
         }
     })
 
-    $notifyIcon.Add_DoubleClick($openQrAction)
+    $notifyIcon.Add_DoubleClick({
+        Toggle-CustomMenu
+    })
 
     $popupWindow.Add_Deactivated({
         Hide-CustomMenu
