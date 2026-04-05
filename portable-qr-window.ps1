@@ -190,6 +190,10 @@ function Set-CardUi {
         $softColor = "#E7F3EC"
         $textColor = "#278659"
         $featuredColor = "#F6FBF8"
+    } elseif ($AccentColor -eq "#35567F") {
+        $softColor = "#EAF1F8"
+        $textColor = "#244A73"
+        $featuredColor = "#F4F8FC"
     } else {
         $softColor = "#F5E7D1"
         $textColor = "#C87720"
@@ -264,7 +268,7 @@ function Set-StatusUi {
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize"
         Background="#EDF2F7"
-        ShowInTaskbar="True"
+        ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
     <Window.Resources>
@@ -325,7 +329,7 @@ function Set-StatusUi {
                  Margin="0,-70,-40,0"
                  HorizontalAlignment="Right"
                  VerticalAlignment="Top"
-                 Fill="#184DB57C"/>
+                 Fill="#1B5D88C2"/>
 
         <Border Margin="26"
                 CornerRadius="34"
@@ -456,8 +460,8 @@ function Set-StatusUi {
                             Grid.Column="0"
                             Padding="22"
                             CornerRadius="28"
-                            Background="#F6FBF8"
-                            BorderBrush="#4DB57C"
+                            Background="#FBF6EF"
+                            BorderBrush="#D07F2A"
                             BorderThickness="1">
                         <Border.Effect>
                             <DropShadowEffect BlurRadius="18"
@@ -474,7 +478,7 @@ function Set-StatusUi {
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                            <Border Background="#E7F3EC"
+                            <Border Background="#F5E7D1"
                                     CornerRadius="14"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
@@ -482,7 +486,7 @@ function Set-StatusUi {
                                            Text="推荐地址"
                                            FontSize="13"
                                            FontWeight="Bold"
-                                           Foreground="#278659"/>
+                                           Foreground="#C87720"/>
                             </Border>
 
                             <Border
@@ -548,8 +552,8 @@ function Set-StatusUi {
                                 <Button x:Name="LanCopyButton"
                                         Content="复制局域网地址"
                                         Style="{StaticResource CopyButtonStyle}"
-                                        Background="#E7F3EC"
-                                        Foreground="#278659"/>
+                                        Background="#F5E7D1"
+                                        Foreground="#C87720"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -558,7 +562,7 @@ function Set-StatusUi {
                             Grid.Column="2"
                             Padding="22"
                             CornerRadius="28"
-                            Background="#EDF2F7"
+                            Background="#F4F8FC"
                             BorderBrush="#D8E0E9"
                             BorderThickness="1">
                         <Border.Effect>
@@ -576,7 +580,7 @@ function Set-StatusUi {
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                            <Border Background="#F5E7D1"
+                            <Border Background="#EAF1F8"
                                     CornerRadius="14"
                                     Padding="12,6"
                                     HorizontalAlignment="Left">
@@ -584,7 +588,7 @@ function Set-StatusUi {
                                            Text="互联网备用"
                                            FontSize="13"
                                            FontWeight="Bold"
-                                           Foreground="#C87720"/>
+                                           Foreground="#244A73"/>
                             </Border>
 
                             <Border
@@ -650,8 +654,8 @@ function Set-StatusUi {
                                 <Button x:Name="OnlineCopyButton"
                                         Content="复制互联网地址"
                                         Style="{StaticResource CopyButtonStyle}"
-                                        Background="#F5E7D1"
-                                        Foreground="#C87720"/>
+                                        Background="#EAF1F8"
+                                        Foreground="#244A73"/>
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -733,7 +737,7 @@ function Sync-WindowState {
         -ImagePath $LanQrPngFile `
         -Featured $featuredLan `
         -BadgeLabel $(if ($featuredLan) { "推荐地址" } else { "局域网直连" }) `
-        -AccentColor "#4DB57C"
+        -AccentColor "#D07F2A"
 
     Set-CardUi `
         -Card $onlineCard `
@@ -750,7 +754,7 @@ function Sync-WindowState {
         -ImagePath $OnlineQrPngFile `
         -Featured $featuredOnline `
         -BadgeLabel $(if ($featuredOnline) { "推荐地址" } else { "互联网备用" }) `
-        -AccentColor "#D07F2A"
+        -AccentColor "#35567F"
 
     $presence = Get-MobilePresenceState
     Set-StatusUi -Connected $presence.Connected -RemoteList $presence.RemoteList

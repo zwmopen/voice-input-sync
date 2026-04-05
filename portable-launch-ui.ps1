@@ -424,6 +424,33 @@ function Minimize-LauncherWindow {
     }
 }
 
+function Hide-LauncherWindow {
+    if (-not $script:MainWindow) {
+        return
+    }
+
+    try {
+        $script:MainWindow.Hide()
+        Write-UiLog "启动窗口已隐藏。"
+    } catch {
+        Write-UiLog ("隐藏启动窗口失败: " + $_.Exception.Message)
+    }
+}
+
+function Close-LauncherWindow {
+    if (-not $script:MainWindow) {
+        return
+    }
+
+    try {
+        $script:AllowWindowClose = $true
+        $script:MainWindow.Close()
+        Write-UiLog "启动窗口已关闭。"
+    } catch {
+        Write-UiLog ("关闭启动窗口失败: " + $_.Exception.Message)
+    }
+}
+
 function Start-BackendLaunch {
     if ($script:LaunchRequested) {
         return
@@ -446,8 +473,8 @@ function Start-BackendLaunch {
 
 function Arm-AutoMinimize {
     param(
-        [int]$MinimumVisibleSeconds = 10,
-        [int]$PostSuccessSeconds = 6
+        [int]$MinimumVisibleSeconds = 0,
+        [int]$PostSuccessSeconds = 1
     )
 
     if (-not $script:CloseTimer) {
@@ -464,7 +491,7 @@ function Arm-AutoMinimize {
     $script:CloseTimer.Stop()
     $script:CloseTimer.Interval = [TimeSpan]::FromSeconds($delaySeconds)
     $script:CloseTimer.Start()
-    Write-UiLog ("将在 {0} 秒后自动缩到任务栏。" -f $delaySeconds)
+    Write-UiLog ("将在 {0} 秒后自动关闭启动窗口。" -f $delaySeconds)
 }
 
 if (-not (Enter-LauncherMutex)) {
@@ -483,7 +510,7 @@ try {
         WindowStartupLocation="CenterScreen"
         ResizeMode="CanMinimize"
         Background="#EDF2F7"
-        ShowInTaskbar="True"
+        ShowInTaskbar="False"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True">
     <Grid>
@@ -767,7 +794,7 @@ try {
                                     Margin="0,0,12,0"
                                     Visibility="Collapsed"/>
                             <Button x:Name="CloseButton"
-                                    Content="&#x7F29;&#x5230;&#x4EFB;&#x52A1;&#x680F;"
+                                    Content="&#x6682;&#x65F6;&#x6536;&#x8D77;"
                                     Width="136"
                                     Height="44"/>
                         </StackPanel>
@@ -856,7 +883,7 @@ try {
             return
         }
 
-        Minimize-LauncherWindow
+        Hide-LauncherWindow
     })
 
     $window.Add_Closing({
@@ -867,7 +894,7 @@ try {
         }
 
         $e.Cancel = $true
-        Minimize-LauncherWindow
+        Hide-LauncherWindow
     })
 
     $animationTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -900,7 +927,7 @@ try {
     $closeTimer.Interval = [TimeSpan]::FromMilliseconds(10000)
     $closeTimer.Add_Tick({
         $closeTimer.Stop()
-        Minimize-LauncherWindow
+        Close-LauncherWindow
     })
 
     $launchTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -931,7 +958,7 @@ try {
                 Update-Chips -State "success" -Percent 100
                 Set-ProgressTarget -Percent 100 -Immediate
                 Update-ProgressFill -State "success" -Percent 100
-                $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
+                $script:CloseButton.Content = "暂时收起"
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 if (-not $script:SuccessSeenAt) {
@@ -1013,7 +1040,7 @@ try {
             Update-Chips -State "running" -Percent $percent
             Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
             Update-ProgressFill -State "running" -Percent $percent
-            $script:CloseButton.Content = Get-Text @(0x7F29,0x5230,0x4EFB,0x52A1,0x680F)
+            $script:CloseButton.Content = "暂时收起"
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
             }
