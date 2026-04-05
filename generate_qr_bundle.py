@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import io
 import json
@@ -11,7 +12,7 @@ import qrcode
 from qrcode.image.svg import SvgPathImage
 
 
-def build_svg(url: str, output_path: Path) -> None:
+def build_svg_text(url: str) -> str:
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
@@ -24,7 +25,16 @@ def build_svg(url: str, output_path: Path) -> None:
     image = qr.make_image(image_factory=SvgPathImage)
     buffer = io.BytesIO()
     image.save(buffer)
-    output_path.write_text(buffer.getvalue().decode("utf-8"), encoding="utf-8")
+    return buffer.getvalue().decode("utf-8")
+
+
+def build_svg(url: str, output_path: Path) -> None:
+    output_path.write_text(build_svg_text(url), encoding="utf-8")
+
+
+def svg_to_data_uri(svg_text: str) -> str:
+    encoded = base64.b64encode(svg_text.encode("utf-8")).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def build_html(
@@ -38,16 +48,25 @@ def build_html(
     host = url.split("://", 1)[1].split("/", 1)[0].split(":", 1)[0]
     ws_url = status_ws_url or f"ws://{host}:{ws_port}"
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    secondary_block = ""
 
+    secondary_qr_markup = ""
+    secondary_address_markup = ""
     if secondary_url:
-        secondary_block = f"""
+        secondary_qr_src = svg_to_data_uri(build_svg_text(secondary_url))
+        secondary_qr_markup = f"""
+                    <div class="qr-card">
+                        <div class="qr-chip secondary">局域网直连</div>
+                        <div class="qr-caption">自己手机热点 / 家里网络</div>
+                        <img src="{secondary_qr_src}" alt="局域网直连二维码">
+                    </div>
+"""
+        secondary_address_markup = f"""
                 <div class="item">
                     <strong>局域网直连地址</strong>
-                    <div class="url-box secondary-url-box" id="secondaryUrlBox" role="button" tabindex="0" aria-label="点击复制局域网地址">
+                    <div class="url-box secondary-url-box" id="secondaryUrlBox" role="button" tabindex="0" aria-label="点击复制局域网直连地址">
                         <div class="url-head">
-                            <div class="url-label">备用地址</div>
-                            <button class="copy-pill" type="button" id="secondaryCopyButton">点击复制</button>
+                            <div class="url-label">本地地址</div>
+                            <button class="copy-pill" type="button" id="secondaryCopyButton">点击复制地址</button>
                         </div>
                         <div class="url-value">{html.escape(secondary_url)}</div>
                     </div>
@@ -69,6 +88,7 @@ def build_html(
             --accent: #cf7e29;
             --accent-soft: rgba(207, 126, 41, 0.12);
             --green: #258657;
+            --green-soft: rgba(37, 134, 87, 0.12);
             --red: #c44a45;
             --shadow-up: 18px 18px 34px rgba(173, 183, 196, 0.8), -18px -18px 34px rgba(255, 255, 255, 0.96);
             --shadow-inset: inset 8px 8px 14px rgba(176, 185, 197, 0.72), inset -8px -8px 14px rgba(255, 255, 255, 0.9);
@@ -91,10 +111,10 @@ def build_html(
         }}
 
         .shell {{
-            width: min(1160px, 100%);
+            width: min(1220px, 100%);
             margin: 0 auto;
             display: grid;
-            grid-template-columns: minmax(340px, 420px) minmax(360px, 1fr);
+            grid-template-columns: minmax(380px, 520px) minmax(360px, 1fr);
             gap: 24px;
         }}
 
@@ -119,8 +139,8 @@ def build_html(
 
         h1 {{
             margin: 18px 0 10px;
-            font-size: clamp(34px, 5vw, 52px);
-            line-height: 1.05;
+            font-size: clamp(32px, 5vw, 48px);
+            line-height: 1.08;
         }}
 
         p {{
@@ -136,15 +156,51 @@ def build_html(
             padding: 22px;
             background: var(--paper);
             box-shadow: var(--shadow-inset);
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }}
 
-        .qr-wrap img {{
-            width: min(100%, 340px);
+        .qr-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }}
+
+        .qr-card {{
+            padding: 16px;
+            border-radius: 22px;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 246, 251, 0.92));
+            box-shadow: 10px 10px 22px rgba(170, 179, 190, 0.72), -10px -10px 22px rgba(255, 255, 255, 0.92);
+            text-align: center;
+        }}
+
+        .qr-chip {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 13px;
+            font-weight: 800;
+        }}
+
+        .qr-chip.secondary {{
+            background: var(--green-soft);
+            color: var(--green);
+        }}
+
+        .qr-caption {{
+            margin: 10px 0 14px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 700;
+        }}
+
+        .qr-card img {{
+            width: min(100%, 260px);
             height: auto;
             display: block;
+            margin: 0 auto;
             padding: 14px;
             border-radius: 20px;
             background: #fff;
@@ -323,11 +379,18 @@ def build_html(
     <main class="shell">
         <section class="card">
             <div class="eyebrow">语音输入同步 · 手机扫码连接</div>
-            <h1>扫一扫，马上开始。</h1>
-            <p>手机扫这个二维码就能直接进入输入页。扫完以后，回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。</p>
+            <h1>扫一个就能开始</h1>
+            <p>上面两个二维码分别对应在线地址和局域网直连地址。你可以按当前网络环境选择最顺手的那个。扫完以后，回到你真正要输入的电脑窗口，点一下输入框，再开始说话或打字。</p>
 
             <div class="qr-wrap">
-                <img src="{html.escape(svg_filename)}" alt="语音输入同步二维码">
+                <div class="qr-grid">
+                    <div class="qr-card">
+                        <div class="qr-chip">推荐扫码地址</div>
+                        <div class="qr-caption">在线地址</div>
+                        <img src="{html.escape(svg_filename)}" alt="在线地址二维码">
+                    </div>
+{secondary_qr_markup}
+                </div>
             </div>
 
             <div class="status-panel">
@@ -351,7 +414,7 @@ def build_html(
                         <div class="url-value">{html.escape(url)}</div>
                     </div>
                 </div>
-{secondary_block}
+{secondary_address_markup}
                 <div class="item">
                     <strong>先做这一件事</strong>
                     <span>在电脑上先把光标点到你真正要输入的位置。这个工具只负责把手机上的输入送过去，不会替你决定要输入到哪个框里。</span>
@@ -370,7 +433,7 @@ def build_html(
         </section>
     </main>
 
-    <div class="toast" id="toast">地址已复制。</div>
+    <div class="toast" id="toast">地址已复制</div>
 
     <script>
         const manualUrl = {json.dumps(url, ensure_ascii=False)};
@@ -512,18 +575,18 @@ def build_html(
         }}
 
         urlBox.addEventListener("click", () => {{
-            copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
+            copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
         }});
 
         copyButton.addEventListener("click", (event) => {{
             event.stopPropagation();
-            copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
+            copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
         }});
 
         urlBox.addEventListener("keydown", (event) => {{
             if (event.key === "Enter" || event.key === " ") {{
                 event.preventDefault();
-                copyText(manualUrl, "地址已复制，你可以直接发到手机上。", "复制失败，请手动长按地址。");
+                copyText(manualUrl, "地址已复制，可以直接发到手机上。", "复制失败，请手动长按地址。");
             }}
         }});
 
