@@ -933,10 +933,7 @@ function Get-ExistingRunningSession {
 
     if ([string]::IsNullOrWhiteSpace($url)) {
         $lanIp = Get-LanIp
-        $computerName = [Environment]::MachineName
-        if (-not [string]::IsNullOrWhiteSpace($computerName)) {
-            $url = "http://$computerName`:$httpPort/mobile.html"
-        } elseif ($lanIp) {
+        if ($lanIp) {
             $url = "http://$lanIp`:$httpPort/mobile.html"
         } else {
             $url = "http://127.0.0.1:$httpPort/mobile.html"
@@ -1118,15 +1115,12 @@ function Update-ShareArtifacts {
         "如果扫码不方便，再在手机浏览器打开下面这个地址："
         $Url
         ""
-        "局域网电脑名地址："
+        "局域网直连地址："
         $(if ([string]::IsNullOrWhiteSpace($SecondaryUrl)) { "（当前没有单独的备用地址）" } else { $SecondaryUrl })
-        ""
-        "局域网 IP 备用地址："
-        $(if ([string]::IsNullOrWhiteSpace($TertiaryUrl)) { "（当前没有单独的 IP 备用地址）" } else { $TertiaryUrl })
         ""
         "使用提醒"
         "1. 热点或公共网络下，优先用上面的推荐地址"
-        "2. 局域网直连时，优先试电脑名地址，不行再试 IP 地址"
+        "2. 如果你就是自己手机给自己电脑开热点，优先试上面的局域网直连地址"
         "3. 先把电脑光标点到你要输入的位置"
         "4. 如果手机已经连上，但电脑没有开始打字，请双击如果输入没反应-请用管理员启动.bat"
     ) -join "`r`n"
@@ -1258,9 +1252,8 @@ try {
     }
 
     $lanIp = Get-LanIp
-    $computerName = [Environment]::MachineName
-    $directUrl = if ([string]::IsNullOrWhiteSpace($computerName)) { "" } else { "http://$computerName`:$httpPort/mobile.html" }
-    $directIpUrl = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    $directUrl = if ($lanIp) { "http://$lanIp`:$httpPort/mobile.html" } else { "http://127.0.0.1:$httpPort/mobile.html" }
+    $directIpUrl = ""
 
     Show-Stage -Title "正在准备手机地址" -Detail "热点网络下会自动补一个更稳的兼容地址。" -Emoji "🛰️" -Color "DarkCyan" -Percent 72
     $shareEndpoints = Get-ShareEndpoints -DirectUrl $directUrl -DirectIpUrl $directIpUrl -HttpPort $httpPort -WsPort $wsPort -SessionToken $sessionToken

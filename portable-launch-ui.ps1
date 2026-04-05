@@ -27,6 +27,7 @@ $script:CurrentUrl = ""
 $script:CurrentTarget = ""
 $script:CurrentState = "running"
 $script:CurrentPercent = 12
+$script:ProgressTarget = 18
 $script:SuccessSeenAt = $null
 $script:LastNetworkHint = ""
 $script:TipMessages = @(
@@ -327,6 +328,18 @@ function Update-ProgressFill {
         $fillWidth = 18
     }
     $script:ProgressFill.Width = $fillWidth
+}
+
+function Set-ProgressTarget {
+    param(
+        [double]$Percent,
+        [switch]$Immediate
+    )
+
+    $script:ProgressTarget = [Math]::Max(0, [Math]::Min(100, $Percent))
+    if ($Immediate) {
+        Update-ProgressFill -Percent $script:ProgressTarget
+    }
 }
 
 if (-not (Enter-LauncherMutex)) {
@@ -671,6 +684,7 @@ try {
     Set-BadgeState -State "running"
     Update-Chips -State "running" -Percent 12
     Update-ProgressFill -Percent 12
+    Set-ProgressTarget -Percent 18
 
     $script:ProgressTrack.Add_SizeChanged({
         Update-ProgressFill -Percent $script:CurrentPercent
@@ -697,7 +711,7 @@ try {
     })
 
     $animationTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $animationTimer.Interval = [TimeSpan]::FromMilliseconds(180)
+    $animationTimer.Interval = [TimeSpan]::FromMilliseconds(90)
     $animationTimer.Add_Tick({
         $script:AnimationTick++
         if ($script:CurrentState -eq "running") {
@@ -712,6 +726,15 @@ try {
                 $index = [int](($script:AnimationTick / 10) % $script:TipMessages.Count)
                 $script:TipText.Text = $script:TipMessages[$index]
             }
+
+            $targetPercent = [Math]::Max($script:ProgressTarget, 26)
+            if ($script:CurrentPercent -lt $targetPercent) {
+                $gap = $targetPercent - $script:CurrentPercent
+                $step = [Math]::Min(4.8, [Math]::Max(0.55, $gap * 0.32))
+                Update-ProgressFill -Percent ($script:CurrentPercent + $step)
+            } elseif ($script:CurrentPercent -lt 86) {
+                Update-ProgressFill -Percent ($script:CurrentPercent + 0.22)
+            }
         }
     })
 
@@ -723,7 +746,7 @@ try {
     })
 
     $pollTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $pollTimer.Interval = [TimeSpan]::FromMilliseconds(350)
+    $pollTimer.Interval = [TimeSpan]::FromMilliseconds(220)
     $pollTimer.Add_Tick({
         $status = Read-StartupStatus
         if ($status) {
@@ -741,7 +764,7 @@ try {
             if ($script:CurrentState -eq "success") {
                 Set-BadgeState -State "success"
                 Update-Chips -State "success" -Percent 100
-                Update-ProgressFill -Percent 100
+                Set-ProgressTarget -Percent 100 -Immediate
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 if (-not $script:SuccessSeenAt) {
@@ -808,7 +831,7 @@ try {
             if ($script:CurrentState -eq "error") {
                 Set-BadgeState -State "error"
                 Update-Chips -State "error" -Percent 100
-                Update-ProgressFill -Percent 100
+                Set-ProgressTarget -Percent 100 -Immediate
                 $script:TitleText.Text = [string]$status.title
                 $script:DetailText.Text = [string]$status.detail
                 $script:FooterText.Text = [string]$status.detail
@@ -820,7 +843,7 @@ try {
 
             Set-BadgeState -State "running"
             Update-Chips -State "running" -Percent $percent
-            Update-ProgressFill -Percent ([Math]::Max(12, [Math]::Min(92, $percent)))
+            Set-ProgressTarget -Percent ([Math]::Max(22, [Math]::Min(92, $percent)))
             if (-not [string]::IsNullOrWhiteSpace([string]$status.title)) {
                 $script:TitleText.Text = [string]$status.title
             }
@@ -838,7 +861,7 @@ try {
             $script:CurrentState = "error"
             Set-BadgeState -State "error"
             Update-Chips -State "error" -Percent 100
-            Update-ProgressFill -Percent 100
+            Set-ProgressTarget -Percent 100 -Immediate
             $script:LogButton.Visibility = "Visible"
         }
     })

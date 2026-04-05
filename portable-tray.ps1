@@ -10,6 +10,7 @@ $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
+$QrHtmlFile = Join-Path $PackageDir "手机扫码打开.html"
 $StopScript = Join-Path $BaseDir "portable-stop.ps1"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
 $MutexName = "Local\VoiceInputSyncPortableTray"
@@ -113,9 +114,11 @@ if (-not (Enter-TrayMutex)) {
 }
 
 $titleText = Get-UiText 0x8BED,0x97F3,0x8F93,0x5165,0x540C,0x6B65
-$openLabel = Get-UiText 0x6253,0x5F00,0x624B,0x673A,0x9875,0x9762
+$openQrLabel = Get-UiText 0x6253,0x5F00,0x626B,0x7801,0x754C,0x9762
+$openMobileLabel = Get-UiText 0x6253,0x5F00,0x624B,0x673A,0x9875,0x9762
 $copyLabel = Get-UiText 0x590D,0x5236,0x624B,0x673A,0x5730,0x5740
 $exitLabel = Get-UiText 0x9000,0x51FA,0x8BED,0x97F3,0x8F93,0x5165,0x540C,0x6B65
+$qrOpenFailedText = Get-UiText 0x626B,0x7801,0x754C,0x9762,0x6682,0x65F6,0x8FD8,0x6CA1,0x51C6,0x5907,0x597D,0x3002
 $pendingText = Get-UiText 0x8FD8,0x6CA1,0x62FF,0x5230,0x624B,0x673A,0x5730,0x5740,0xFF0C,0x8BF7,0x7A0D,0x540E,0x518D,0x8BD5,0x3002
 $copiedText = Get-UiText 0x624B,0x673A,0x5730,0x5740,0x5DF2,0x7ECF,0x590D,0x5236,0x3002
 $copyFailedText = Get-UiText 0x590D,0x5236,0x5931,0x8D25,0xFF0C,0x8BF7,0x7A0D,0x540E,0x91CD,0x8BD5,0x3002
@@ -128,7 +131,8 @@ try {
     $context = New-Object System.Windows.Forms.ApplicationContext
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
 
-    $openItem = $menu.Items.Add($openLabel)
+    $openQrItem = $menu.Items.Add($openQrLabel)
+    $openMobileItem = $menu.Items.Add($openMobileLabel)
     $copyItem = $menu.Items.Add($copyLabel)
     [void]$menu.Items.Add("-")
     $exitItem = $menu.Items.Add($exitLabel)
@@ -144,15 +148,22 @@ try {
     $notifyIcon.ContextMenuStrip = $menu
     $notifyIcon.Visible = $true
 
-    $openAction = {
+    $openQrAction = {
+        if (-not (Open-Target -Target $QrHtmlFile)) {
+            Show-Balloon -NotifyIcon $notifyIcon -Title $titleText -Text $qrOpenFailedText -Icon ([System.Windows.Forms.ToolTipIcon]::Warning)
+        }
+    }
+
+    $openMobileAction = {
         $target = Read-LatestUrl
         if (-not (Open-Target -Target $target)) {
             Show-Balloon -NotifyIcon $notifyIcon -Title $titleText -Text $openFailedText -Icon ([System.Windows.Forms.ToolTipIcon]::Warning)
         }
     }
 
-    $openItem.add_Click($openAction)
-    $notifyIcon.add_DoubleClick($openAction)
+    $openQrItem.add_Click($openQrAction)
+    $openMobileItem.add_Click($openMobileAction)
+    $notifyIcon.add_DoubleClick($openQrAction)
 
     $copyItem.add_Click({
         $url = Read-LatestUrl
