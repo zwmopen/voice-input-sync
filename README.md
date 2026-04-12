@@ -3,12 +3,29 @@
 把手机上的语音/文字输入，实时同步到电脑当前输入框。  
 优先走局域网直连，局域网不通时可切换互联网备用地址。
 
+## 当前定位
+
+这是 `2026.04` 的纪念整理版。
+
+- 原来的核心场景是“手机语音输入，电脑同步打字”
+- 现在微信输入法已经能覆盖大部分日常语音转文字场景
+- 这个项目保留下来，主要用于本地直连、临时输入接力，以及后续继续演进手机和电脑协同能力
+
+这次版本重点不是加花活，而是把现有体验修稳：
+
+- 修复设置页在中文安装路径下打不开的问题
+- 修复本地已经是最新版却仍提示“有新版本”的判断错误
+- 修复主程序退出后设置窗口残留的问题
+- 修复设置窗口被当成独立 PowerShell 任务栏窗口的问题
+
 ## 下载
 
-- 安装版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup-v2026.04.12.01.exe`
-- 绿色版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable-v2026.04.12.01.zip`
+- 安装版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `语音输入同步-安装版.exe`
+- 绿色版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `语音输入同步-绿色版.zip`
 
-## 三步上手（新版）
+当前版本：`2026.04.12.02`
+
+## 三步上手
 
 1. 双击桌面 `语音输入同步` 启动应用。
 2. 扫码页会自动打开，先扫“局域网直连”二维码。
@@ -19,23 +36,23 @@
 - 本地离线版：[`share-user-guide.html`](./share-user-guide.html)
 - 文本手册：[`使用手册.md`](./使用手册.md)
 
-## 设置与更新（你这次提到的入口）
+## 设置与更新
 
-- 扫码主界面右上角新增了 `设置` 按钮（齿轮）。
-- 检测到 GitHub 有新版本时，设置按钮右上会显示绿色提示点。
-- 点设置后可直接“立即检查”或“打开下载页”更新。
+- 扫码主界面右上角有 `设置` 按钮
+- 检测到 GitHub 有新版本时，设置按钮右上会显示绿色提示点
+- 点设置后可直接“立即检查”或“打开下载页”
 
 ## 常见问题
 
 - 手机能打开页面，但电脑不输入：先回电脑点中真正输入框，再输入。
 - 手机打不开局域网地址：先确认手机与电脑在同一网络，再尝试互联网备用地址。
-- 托盘菜单无反应：升级到最新版本（本项目已做右键原生菜单兜底）。
+- 本地明明刚更新还提示有新版：请确认当前版本是否为 `2026.04.12.02` 或更高；这版已修复本地版本号与更新状态不同步的问题。
 
 ## 核心文件
 
 - `portable-launch-ui.ps1`：启动窗口
 - `portable-start.ps1`：启动主流程
-- `portable-qr-window.ps1`：扫码主界面（含设置按钮与更新点）
-- `portable-settings-window.ps1`：设置页（版本检查）
+- `portable-qr-window.ps1`：扫码主界面
+- `portable-settings-window.ps1`：设置页
 - `portable-tray.ps1`：托盘菜单
 - `mobile.html`：手机输入页

@@ -12,6 +12,7 @@ $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$AppVersionFile = Join-Path $BaseDir "app-version.txt"
 $UpdateStatusFile = Join-Path $LogsDir "update-status.json"
 $SettingsWindowScript = Join-Path $BaseDir "portable-settings-window.ps1"
 $UpdateCheckScript = Join-Path $BaseDir "portable-check-update.ps1"
@@ -64,6 +65,52 @@ function Read-UpdateStatus {
     }
 }
 
+function Get-CurrentVersion {
+    $buildInfo = Read-BuildInfo
+    $buildVersion = ""
+    if ($buildInfo) {
+        $buildVersion = [string]$buildInfo.appVersion
+        if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+            $buildVersion = [string]$buildInfo.gitCommit
+        }
+    }
+
+    $fileVersion = ""
+    if (Test-Path $AppVersionFile) {
+        try {
+            $fileVersion = (Get-Content -Raw -LiteralPath $AppVersionFile -Encoding UTF8).Trim()
+        } catch {
+            $fileVersion = ""
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+        return $fileVersion
+    }
+    if ([string]::IsNullOrWhiteSpace($fileVersion)) {
+        return $buildVersion
+    }
+
+    try {
+        $buildParts = @(([regex]::Split($buildVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $fileParts = @(([regex]::Split($fileVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $count = [Math]::Max($buildParts.Count, $fileParts.Count)
+        for ($index = 0; $index -lt $count; $index++) {
+            $left = if ($index -lt $fileParts.Count) { $fileParts[$index] } else { 0 }
+            $right = if ($index -lt $buildParts.Count) { $buildParts[$index] } else { 0 }
+            if ($left -gt $right) {
+                return $fileVersion
+            }
+            if ($left -lt $right) {
+                return $buildVersion
+            }
+        }
+        return $fileVersion
+    } catch {
+        return $fileVersion
+    }
+}
+
 function Start-UpdateCheck {
     if (-not (Test-Path $UpdateCheckScript)) {
         return
@@ -103,20 +150,13 @@ function Start-HiddenPsScript {
         "sh.Run """ + $commandText.Replace("""", """""") + """, 0, False"
     ) -join [Environment]::NewLine
 
-    Set-Content -LiteralPath $tempVbs -Value $vbsText -Encoding ASCII
+    Set-Content -LiteralPath $tempVbs -Value $vbsText -Encoding Unicode
     Start-Process -FilePath $wscriptPath -ArgumentList @("//nologo", $tempVbs) -WindowStyle Hidden | Out-Null
     return $true
 }
 
 function Test-HasPendingUpdate {
-    $buildInfo = Read-BuildInfo
-    $currentVersion = ""
-    if ($buildInfo) {
-        $currentVersion = [string]$buildInfo.appVersion
-        if ([string]::IsNullOrWhiteSpace($currentVersion)) {
-            $currentVersion = [string]$buildInfo.gitCommit
-        }
-    }
+    $currentVersion = Get-CurrentVersion
 
     if ([string]::IsNullOrWhiteSpace($currentVersion)) {
         return $false

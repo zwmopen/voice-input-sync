@@ -9,6 +9,7 @@ $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$AppVersionFile = Join-Path $BaseDir "app-version.txt"
 $UpdateStatusFile = Join-Path $LogsDir "update-status.json"
 $ApiUrl = "https://api.github.com/repos/zwmopen/voice-input-sync/releases/latest"
 $FallbackReleaseUrl = "https://github.com/zwmopen/voice-input-sync/releases/latest"
@@ -25,6 +26,18 @@ function Read-BuildInfo {
         return Get-Content -Raw -LiteralPath $BuildInfoFile -Encoding UTF8 | ConvertFrom-Json
     } catch {
         return $null
+    }
+}
+
+function Read-AppVersion {
+    if (-not (Test-Path $AppVersionFile)) {
+        return ""
+    }
+
+    try {
+        return (Get-Content -Raw -LiteralPath $AppVersionFile -Encoding UTF8).Trim()
+    } catch {
+        return ""
     }
 }
 
@@ -146,6 +159,13 @@ if ($buildInfo) {
     $currentVersion = Normalize-Version ([string]$buildInfo.appVersion)
     if ([string]::IsNullOrWhiteSpace($currentVersion)) {
         $currentVersion = Normalize-Version ([string]$buildInfo.gitCommit)
+    }
+}
+
+$fileVersion = Normalize-Version (Read-AppVersion)
+if (-not [string]::IsNullOrWhiteSpace($fileVersion)) {
+    if ([string]::IsNullOrWhiteSpace($currentVersion) -or (Compare-Version -Left $fileVersion -Right $currentVersion) -gt 0) {
+        $currentVersion = $fileVersion
     }
 }
 

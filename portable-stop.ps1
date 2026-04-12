@@ -100,6 +100,9 @@ function Get-ManagedAuxiliaryProcesses {
     foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable-qr-window.ps1"))) {
         [void]$targets.Add($proc)
     }
+    foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable-settings-window.ps1"))) {
+        [void]$targets.Add($proc)
+    }
     foreach ($proc in @(Get-ManagedScriptProcesses -ScriptPath (Join-Path $BaseDir "portable_http_server.py"))) {
         [void]$targets.Add($proc)
     }

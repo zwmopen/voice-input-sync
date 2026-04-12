@@ -13,6 +13,7 @@ $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$AppVersionFile = Join-Path $BaseDir "app-version.txt"
 $UpdateStatusFile = Join-Path $LogsDir "update-status.json"
 $UpdateCheckScript = Join-Path $BaseDir "portable-check-update.ps1"
 $IconPath = Join-Path $BaseDir "assets\\voice-sync-icon.ico"
@@ -50,6 +51,52 @@ function Read-UpdateStatus {
         return Get-Content -Raw -LiteralPath $UpdateStatusFile -Encoding UTF8 | ConvertFrom-Json
     } catch {
         return $null
+    }
+}
+
+function Get-CurrentVersion {
+    $buildInfo = Read-BuildInfo
+    $buildVersion = ""
+    if ($buildInfo) {
+        $buildVersion = [string]$buildInfo.appVersion
+        if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+            $buildVersion = [string]$buildInfo.gitCommit
+        }
+    }
+
+    $fileVersion = ""
+    if (Test-Path $AppVersionFile) {
+        try {
+            $fileVersion = (Get-Content -Raw -LiteralPath $AppVersionFile -Encoding UTF8).Trim()
+        } catch {
+            $fileVersion = ""
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+        return $fileVersion
+    }
+    if ([string]::IsNullOrWhiteSpace($fileVersion)) {
+        return $buildVersion
+    }
+
+    try {
+        $buildParts = @(([regex]::Split($buildVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $fileParts = @(([regex]::Split($fileVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $count = [Math]::Max($buildParts.Count, $fileParts.Count)
+        for ($index = 0; $index -lt $count; $index++) {
+            $left = if ($index -lt $fileParts.Count) { $fileParts[$index] } else { 0 }
+            $right = if ($index -lt $buildParts.Count) { $buildParts[$index] } else { 0 }
+            if ($left -gt $right) {
+                return $fileVersion
+            }
+            if ($left -lt $right) {
+                return $buildVersion
+            }
+        }
+        return $fileVersion
+    } catch {
+        return $fileVersion
     }
 }
 
@@ -117,14 +164,7 @@ $emptyMessageText = (-join @(
     "."
 ))
 
-$buildInfo = Read-BuildInfo
-$currentVersion = ""
-if ($buildInfo) {
-    $currentVersion = [string]$buildInfo.appVersion
-    if ([string]::IsNullOrWhiteSpace($currentVersion)) {
-        $currentVersion = [string]$buildInfo.gitCommit
-    }
-}
+$currentVersion = Get-CurrentVersion
 if ([string]::IsNullOrWhiteSpace($currentVersion)) {
     $currentVersion = $unknownText
 }
@@ -137,6 +177,7 @@ if ([string]::IsNullOrWhiteSpace($currentVersion)) {
         MinHeight="352"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
+        ShowInTaskbar="False"
         Background="#E8EEF4"
         FontFamily="Microsoft YaHei UI"
         SnapsToDevicePixels="True"

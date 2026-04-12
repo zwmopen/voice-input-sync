@@ -16,6 +16,7 @@ $LogsDir = Join-Path $PackageDir "logs"
 $LatestUrlFile = Join-Path $PackageDir "latest-url.txt"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
 $BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$AppVersionFile = Join-Path $BaseDir "app-version.txt"
 $UpdateStatusFile = Join-Path $LogsDir "update-status.json"
 $QrHtmlFile = Join-Path $PackageDir ((-join ([int[]](0x624B,0x673A,0x626B,0x7801,0x6253,0x5F00) | ForEach-Object { [char]$_ })) + ".html")
 $QrWindowScript = Join-Path $BaseDir "portable-qr-window.ps1"
@@ -115,6 +116,52 @@ function Read-UpdateStatus {
     } catch {
         Write-Log ("Update status read failed: " + $_.Exception.Message)
         return $null
+    }
+}
+
+function Get-CurrentVersion {
+    $buildInfo = Read-BuildInfo
+    $buildVersion = ""
+    if ($buildInfo) {
+        $buildVersion = [string]$buildInfo.appVersion
+        if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+            $buildVersion = [string]$buildInfo.gitCommit
+        }
+    }
+
+    $fileVersion = ""
+    if (Test-Path $AppVersionFile) {
+        try {
+            $fileVersion = (Get-Content -Raw -LiteralPath $AppVersionFile -Encoding UTF8).Trim()
+        } catch {
+            $fileVersion = ""
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($buildVersion)) {
+        return $fileVersion
+    }
+    if ([string]::IsNullOrWhiteSpace($fileVersion)) {
+        return $buildVersion
+    }
+
+    try {
+        $buildParts = @(([regex]::Split($buildVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $fileParts = @(([regex]::Split($fileVersion, '[^0-9]+')) | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        $count = [Math]::Max($buildParts.Count, $fileParts.Count)
+        for ($index = 0; $index -lt $count; $index++) {
+            $left = if ($index -lt $fileParts.Count) { $fileParts[$index] } else { 0 }
+            $right = if ($index -lt $buildParts.Count) { $buildParts[$index] } else { 0 }
+            if ($left -gt $right) {
+                return $fileVersion
+            }
+            if ($left -lt $right) {
+                return $buildVersion
+            }
+        }
+        return $fileVersion
+    } catch {
+        return $fileVersion
     }
 }
 
@@ -571,14 +618,7 @@ try {
         }
 
         $updateStatus = Read-UpdateStatus
-        $buildInfo = Read-BuildInfo
-        $currentVersion = ""
-        if ($buildInfo) {
-            $currentVersion = [string]$buildInfo.appVersion
-            if ([string]::IsNullOrWhiteSpace($currentVersion)) {
-                $currentVersion = [string]$buildInfo.gitCommit
-            }
-        }
+        $currentVersion = Get-CurrentVersion
         $showUpdateDot = $false
         if ($updateStatus -and ([string]$updateStatus.currentVersion).Trim() -eq $currentVersion -and [bool]$updateStatus.hasUpdate) {
             $showUpdateDot = $true
