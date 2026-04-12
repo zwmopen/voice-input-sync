@@ -10,8 +10,8 @@
 
 ## 下载
 
-- 安装版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup.exe`
-- 绿色版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable.zip`
+- 安装版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup-v2026.04.05.11.exe`
+- 绿色版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable-v2026.04.05.11.zip`
 
 ## 怎么用
 
