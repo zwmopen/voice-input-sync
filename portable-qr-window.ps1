@@ -75,6 +75,39 @@ function Start-UpdateCheck {
         -WindowStyle Hidden | Out-Null
 }
 
+function Start-HiddenPsScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$ScriptPath
+    )
+
+    if (-not (Test-Path $ScriptPath)) {
+        return $false
+    }
+
+    $wscriptPath = Join-Path $env:WINDIR "System32\wscript.exe"
+    if (-not (Test-Path $wscriptPath)) {
+        return $false
+    }
+
+    $tempVbs = Join-Path $env:TEMP "voice-input-sync-open-settings.vbs"
+    $psExe = (Get-Command powershell.exe).Source
+
+    $escapedPsExe = $psExe.Replace("""", """""")
+    $escapedScript = ([System.IO.Path]::GetFullPath($ScriptPath)).Replace("""", """""")
+    $escapedCwd = ([System.IO.Path]::GetFullPath($PackageDir)).Replace("""", """""")
+    $commandText = """" + $escapedPsExe + """ -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File """ + $escapedScript + """"
+
+    $vbsText = @(
+        "Set sh = CreateObject(""WScript.Shell"")"
+        "sh.CurrentDirectory = """ + $escapedCwd + """"
+        "sh.Run """ + $commandText.Replace("""", """""") + """, 0, False"
+    ) -join [Environment]::NewLine
+
+    Set-Content -LiteralPath $tempVbs -Value $vbsText -Encoding ASCII
+    Start-Process -FilePath $wscriptPath -ArgumentList @("//nologo", $tempVbs) -WindowStyle Hidden | Out-Null
+    return $true
+}
+
 function Test-HasPendingUpdate {
     $buildInfo = Read-BuildInfo
     $currentVersion = ""
@@ -970,15 +1003,11 @@ $settingsButton.Add_Click({
 
     try {
         Start-UpdateCheck
-        & $SettingsWindowScript
-    } catch {
-        try {
-            Start-Process -FilePath (Get-Command powershell.exe).Source `
-                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $SettingsWindowScript) `
-                -WorkingDirectory $PackageDir | Out-Null
-        } catch {
-            Show-CopyToast "设置打开失败"
+        if (-not (Start-HiddenPsScript -ScriptPath $SettingsWindowScript)) {
+            throw "start settings failed"
         }
+    } catch {
+        Show-CopyToast "设置打开失败"
     }
 })
 
