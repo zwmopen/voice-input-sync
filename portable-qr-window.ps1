@@ -913,6 +913,31 @@ function Show-CopyToast {
     $copyToastTimer.Start()
 }
 
+function Test-IsInteractiveElement {
+    param([object]$Element)
+
+    $current = $Element
+    while ($current) {
+        if ($current -is [System.Windows.Controls.Primitives.ButtonBase]) {
+            return $true
+        }
+        if ($current -is [System.Windows.Controls.TextBoxBase]) {
+            return $true
+        }
+        if ($current -is [System.Windows.Controls.PasswordBox]) {
+            return $true
+        }
+
+        try {
+            $current = [System.Windows.Media.VisualTreeHelper]::GetParent($current)
+        } catch {
+            break
+        }
+    }
+
+    return $false
+}
+
 function Update-SettingsBadge {
     if (-not $settingsDot) {
         return
@@ -944,26 +969,16 @@ $settingsButton.Add_Click({
     }
 
     try {
-        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-            Where-Object {
-                $_.ProcessId -ne $PID -and
-                $_.CommandLine -and
-                $_.CommandLine -like '*portable-settings-window.ps1*'
-            } |
-            ForEach-Object {
-                try {
-                    Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
-                } catch {
-                }
-            }
-
         Start-UpdateCheck
-        Start-Process -FilePath (Get-Command powershell.exe).Source `
-            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $SettingsWindowScript) `
-            -WorkingDirectory $PackageDir `
-            -WindowStyle Hidden | Out-Null
+        & $SettingsWindowScript
     } catch {
-        Show-CopyToast "设置打开失败"
+        try {
+            Start-Process -FilePath (Get-Command powershell.exe).Source `
+                -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $SettingsWindowScript) `
+                -WorkingDirectory $PackageDir | Out-Null
+        } catch {
+            Show-CopyToast "设置打开失败"
+        }
     }
 })
 
@@ -972,6 +987,9 @@ $dragWindowAction = {
 
     try {
         if ($e.ChangedButton -eq [System.Windows.Input.MouseButton]::Left) {
+            if (Test-IsInteractiveElement -Element $e.OriginalSource) {
+                return
+            }
             $window.DragMove()
         }
     } catch {
