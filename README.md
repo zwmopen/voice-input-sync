@@ -1,73 +1,41 @@
 # 语音输入同步
 
-把手机上的语音输入或文字输入，实时同步到电脑当前光标所在的输入框里。
-
-适合这些场景：
-
-- 手机给电脑开热点，自己一个人快速输入
-- 家里或办公室同一个 Wi-Fi 下，把手机当无线语音键盘
-- 聊天、写文案、记笔记、填表、轻办公
+把手机上的语音/文字输入，实时同步到电脑当前输入框。  
+优先走局域网直连，局域网不通时可切换互联网备用地址。
 
 ## 下载
 
-- 安装版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup-v2026.04.05.11.exe`
-- 绿色版：前往 [Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable-v2026.04.05.11.zip`
+- 安装版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Setup-v2026.04.05.11.exe`
+- 绿色版：[Releases](https://github.com/zwmopen/voice-input-sync/releases/latest) 下载 `VoiceInputSync-Portable-v2026.04.05.11.zip`
 
-## 怎么用
+## 三步上手（新版）
 
-1. 在电脑上双击启动 `语音输入同步`
-2. 等启动页出现，扫码页会自动打开
-3. 手机上先试“局域网直连”，不通时再用“互联网备用”
-4. 电脑扫码页变成 `已连接` 后，回电脑点中真正要输入的输入框
-5. 开始在手机上说话或打字，内容会同步到电脑
+1. 双击桌面 `语音输入同步` 启动应用。
+2. 扫码页会自动打开，先扫“局域网直连”二维码。
+3. 电脑状态变成“已连接”后，回电脑点中目标输入框，再在手机端输入。
 
-## 连接方式
+## 图文手册
 
-### 1. 局域网直连
+- 本地离线版：[`share-user-guide.html`](./share-user-guide.html)
+- 文本手册：[`使用手册.md`](./使用手册.md)
 
-默认优先。
+## 设置与更新（你这次提到的入口）
 
-适合这些情况：
+- 扫码主界面右上角新增了 `设置` 按钮（齿轮）。
+- 检测到 GitHub 有新版本时，设置按钮右上会显示绿色提示点。
+- 点设置后可直接“立即检查”或“打开下载页”更新。
 
-- 手机给电脑开热点
-- 手机和电脑连同一个 Wi-Fi
-- 想要更直接、更快的输入体验
+## 常见问题
 
-### 2. 互联网备用
+- 手机能打开页面，但电脑不输入：先回电脑点中真正输入框，再输入。
+- 手机打不开局域网地址：先确认手机与电脑在同一网络，再尝试互联网备用地址。
+- 托盘菜单无反应：升级到最新版本（本项目已做右键原生菜单兜底）。
 
-当局域网直连打不开时，扫码页会保留一个互联网备用地址。
+## 核心文件
 
-适合这些情况：
-
-- 当前网络环境比较怪
-- 局域网访问被限制
-- 你只是想先用起来，不想排查网络
-
-## 现在这版的体验
-
-- 启动时会先显示桌面启动页，不会只剩后台悄悄跑
-- 启动后会自动打开扫码页
-- 启动成功后会自动缩到任务栏
-- 托盘右键可以重新打开二维码界面或手机页面
-- 扫码页是局域网优先、互联网备用的双入口
-- 手机页按钮已经收紧，更适合直接输入
-
-## 常见提醒
-
-- 如果手机能打开页面，但输入没有同步到电脑，先回电脑点一下真正的输入框
-- 如果电脑输入权限不够，改用管理员方式启动
-- 如果同一个网络下手机打不开局域网地址，再试扫码页下面的互联网备用入口
-
-## 仓库里最重要的文件
-
+- `portable-launch-ui.ps1`：启动窗口
+- `portable-start.ps1`：启动主流程
+- `portable-qr-window.ps1`：扫码主界面（含设置按钮与更新点）
+- `portable-settings-window.ps1`：设置页（版本检查）
+- `portable-tray.ps1`：托盘菜单
 - `mobile.html`：手机输入页
-- `generate_qr_bundle.py`：扫码页生成逻辑
-- `portable-launch-ui.ps1`：桌面启动窗口
-- `portable-start.ps1`：启动总控脚本
-- `portable-tray.ps1`：托盘常驻入口
-- `build-portable.ps1`：绿色版打包
-- `build-installer.ps1`：安装版打包
-
-## 说明
-
-当前应用图标使用了第三方图标资源，授权信息保存在 [`assets/voice-sync-icon-license.txt`](assets/voice-sync-icon-license.txt)。

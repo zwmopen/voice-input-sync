@@ -132,21 +132,24 @@ if ([string]::IsNullOrWhiteSpace($currentVersion)) {
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="420"
-        Height="288"
+        Width="456"
+        Height="352"
+        MinHeight="352"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         Background="#E8EEF4"
-        FontFamily="Microsoft YaHei UI">
-  <Border Margin="14"
-          CornerRadius="28"
+        FontFamily="Microsoft YaHei UI"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+  <Border Margin="12"
+          CornerRadius="22"
           Background="#EEF3F8"
           BorderBrush="#F8FBFE"
           BorderThickness="1">
     <Border.Effect>
       <DropShadowEffect BlurRadius="20" ShadowDepth="10" Direction="270" Color="#95A6B6" Opacity="0.18"/>
     </Border.Effect>
-    <Grid Margin="22">
+    <Grid Margin="20">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>

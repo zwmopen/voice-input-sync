@@ -11,6 +11,10 @@ $BaseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PackageDir = Split-Path -Parent $BaseDir
 $LogsDir = Join-Path $PackageDir "logs"
 $RuntimeConfigFile = Join-Path $BaseDir "runtime-config.json"
+$BuildInfoFile = Join-Path $BaseDir "build-info.json"
+$UpdateStatusFile = Join-Path $LogsDir "update-status.json"
+$SettingsWindowScript = Join-Path $BaseDir "portable-settings-window.ps1"
+$UpdateCheckScript = Join-Path $BaseDir "portable-check-update.ps1"
 $StartupLog = Join-Path $LogsDir "startup.log"
 $ServerRuntimeLog = Join-Path $BaseDir "logs\server-runtime.log"
 $IconPath = Join-Path $BaseDir "assets\voice-sync-icon.ico"
@@ -34,6 +38,63 @@ function Read-RuntimeConfig {
     } catch {
         return $null
     }
+}
+
+function Read-BuildInfo {
+    if (-not (Test-Path $BuildInfoFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $BuildInfoFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Read-UpdateStatus {
+    if (-not (Test-Path $UpdateStatusFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content -Raw -LiteralPath $UpdateStatusFile -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Start-UpdateCheck {
+    if (-not (Test-Path $UpdateCheckScript)) {
+        return
+    }
+
+    Start-Process -FilePath (Get-Command powershell.exe).Source `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $UpdateCheckScript) `
+        -WorkingDirectory $PackageDir `
+        -WindowStyle Hidden | Out-Null
+}
+
+function Test-HasPendingUpdate {
+    $buildInfo = Read-BuildInfo
+    $currentVersion = ""
+    if ($buildInfo) {
+        $currentVersion = [string]$buildInfo.appVersion
+        if ([string]::IsNullOrWhiteSpace($currentVersion)) {
+            $currentVersion = [string]$buildInfo.gitCommit
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($currentVersion)) {
+        return $false
+    }
+
+    $updateStatus = Read-UpdateStatus
+    if (-not $updateStatus) {
+        return $false
+    }
+
+    return (([string]$updateStatus.currentVersion).Trim() -eq $currentVersion -and [bool]$updateStatus.hasUpdate)
 }
 
 function Get-ConfigValue {
@@ -408,7 +469,27 @@ function Set-StatusUi {
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
+                        <Grid Width="38"
+                              Height="38">
+                            <Button x:Name="SettingsButton"
+                                    Style="{StaticResource TitleButtonStyle}"
+                                    Background="#EAF1F8"
+                                    Foreground="#2E4A68"
+                                    ToolTip="打开设置"
+                                    Content="&#xE713;"/>
+                            <Ellipse x:Name="SettingsDot"
+                                     Width="9"
+                                     Height="9"
+                                     Fill="#4DB57C"
+                                     Stroke="#EEF4FA"
+                                     StrokeThickness="1.2"
+                                     HorizontalAlignment="Right"
+                                     VerticalAlignment="Top"
+                                     Margin="0,2,2,0"
+                                     Visibility="Collapsed"/>
+                        </Grid>
                         <Button x:Name="HideWindowButton"
+                                Margin="10,0,0,0"
                                 Style="{StaticResource TitleButtonStyle}"
                                 Content="&#xE921;"/>
                         <Button x:Name="CloseWindowButton"
@@ -782,6 +863,8 @@ $titleBar = $window.FindName("TitleBar")
 $headerShell = $window.FindName("HeaderShell")
 $guideShell = $window.FindName("GuideShell")
 $headerIcon = $window.FindName("HeaderIcon")
+$settingsButton = $window.FindName("SettingsButton")
+$settingsDot = $window.FindName("SettingsDot")
 $hideWindowButton = $window.FindName("HideWindowButton")
 $closeWindowButton = $window.FindName("CloseWindowButton")
 $script:StatusPill = $window.FindName("StatusPill")
@@ -830,6 +913,14 @@ function Show-CopyToast {
     $copyToastTimer.Start()
 }
 
+function Update-SettingsBadge {
+    if (-not $settingsDot) {
+        return
+    }
+
+    $settingsDot.Visibility = if (Test-HasPendingUpdate) { "Visible" } else { "Collapsed" }
+}
+
 $lanCopyButton.Add_Click({
     if (-not [string]::IsNullOrWhiteSpace($lanAddress.Text) -and $lanCopyButton.IsEnabled) {
         [System.Windows.Clipboard]::SetText($lanAddress.Text)
@@ -843,6 +934,36 @@ $onlineCopyButton.Add_Click({
         [System.Windows.Clipboard]::SetText($onlineAddress.Text)
         $script:StatusHintText.Text = "互联网地址已复制，可以直接发到手机。"
         Show-CopyToast "已复制互联网地址"
+    }
+})
+
+$settingsButton.Add_Click({
+    if (-not (Test-Path $SettingsWindowScript)) {
+        Show-CopyToast "设置入口不可用"
+        return
+    }
+
+    try {
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.ProcessId -ne $PID -and
+                $_.CommandLine -and
+                $_.CommandLine -like '*portable-settings-window.ps1*'
+            } |
+            ForEach-Object {
+                try {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop
+                } catch {
+                }
+            }
+
+        Start-UpdateCheck
+        Start-Process -FilePath (Get-Command powershell.exe).Source `
+            -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $SettingsWindowScript) `
+            -WorkingDirectory $PackageDir `
+            -WindowStyle Hidden | Out-Null
+    } catch {
+        Show-CopyToast "设置打开失败"
     }
 })
 
@@ -916,6 +1037,7 @@ function Sync-WindowState {
 
     $presence = Get-MobilePresenceState
     Set-StatusUi -Connected $presence.Connected -RemoteList $presence.RemoteList
+    Update-SettingsBadge
 }
 
 $refreshTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -925,6 +1047,7 @@ $refreshTimer.Add_Tick({
 })
 
 $window.Add_ContentRendered({
+    Start-UpdateCheck
     Sync-WindowState
     $refreshTimer.Start()
 })

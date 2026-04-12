@@ -3,19 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>语音输入同步 - 用户手册</title>
+    <title>语音输入同步 - 三步上手与常见问题</title>
     <style>
         :root {
-            --bg: #f6f3ed;
-            --paper: rgba(255, 253, 249, 0.88);
-            --text: #1f2937;
-            --muted: #5f6b7a;
-            --line: rgba(31, 41, 55, 0.12);
-            --brand: #d97706;
-            --brand-soft: #fff1dc;
-            --green: #18794e;
-            --blue: #2457a6;
-            --shadow: 0 20px 60px rgba(92, 74, 49, 0.14);
+            --bg: #e7edf4;
+            --panel: #edf2f8;
+            --panel-2: #e9eff6;
+            --line: #d6e0eb;
+            --text: #1f3550;
+            --muted: #60738a;
+            --brand: #d48b32;
+            --brand-soft: #f6e8d3;
+            --ok: #4db57c;
+            --ok-soft: #e7f3ec;
+            --blue-soft: #eaf1f8;
+            --shadow-up: -6px -6px 14px rgba(255, 255, 255, 0.9);
+            --shadow-down: 8px 10px 20px rgba(131, 151, 173, 0.24);
         }
 
         * {
@@ -27,200 +30,230 @@
             font-family: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
             color: var(--text);
             background:
-                radial-gradient(circle at top left, rgba(217, 119, 6, 0.12), transparent 32%),
-                radial-gradient(circle at top right, rgba(36, 87, 166, 0.10), transparent 26%),
-                linear-gradient(180deg, #f8f4ed 0%, #f2eee8 100%);
+                radial-gradient(circle at 0 0, rgba(212, 139, 50, 0.14), transparent 30%),
+                radial-gradient(circle at 100% 0, rgba(79, 127, 185, 0.12), transparent 28%),
+                linear-gradient(180deg, #e8eef5 0%, #e3ebf4 100%);
             min-height: 100vh;
         }
 
         .shell {
-            width: min(1100px, calc(100% - 32px));
-            margin: 0 auto;
-            padding: 40px 0 56px;
+            width: min(1120px, calc(100% - 28px));
+            margin: 20px auto 30px;
+            padding: 18px;
+            border-radius: 20px;
+            background: var(--panel);
+            border: 1px solid #f6f9fd;
+            box-shadow: var(--shadow-up), var(--shadow-down);
+        }
+
+        .hero,
+        .section {
+            background: var(--panel-2);
+            border: 1px solid #f5f9fd;
+            border-radius: 16px;
+            box-shadow: var(--shadow-up), var(--shadow-down);
         }
 
         .hero {
-            background: linear-gradient(145deg, rgba(255, 251, 244, 0.96), rgba(255, 247, 235, 0.94));
-            border: 1px solid rgba(217, 119, 6, 0.16);
-            border-radius: 28px;
-            box-shadow: var(--shadow);
-            padding: 36px;
-            position: relative;
-            overflow: hidden;
+            padding: 22px;
         }
 
-        .hero::after {
-            content: "";
-            position: absolute;
-            width: 240px;
-            height: 240px;
-            right: -80px;
-            top: -80px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(217, 119, 6, 0.18), transparent 68%);
-        }
-
-        .eyebrow {
+        .badge {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 8px 14px;
+            padding: 6px 12px;
             border-radius: 999px;
             background: var(--brand-soft);
             color: var(--brand);
             font-size: 13px;
             font-weight: 700;
-            letter-spacing: 0.04em;
         }
 
         h1 {
-            margin: 18px 0 12px;
-            font-size: clamp(32px, 5vw, 52px);
-            line-height: 1.06;
+            margin: 14px 0 10px;
+            font-size: clamp(28px, 4vw, 40px);
+            line-height: 1.12;
         }
 
         .hero p {
             margin: 0;
-            max-width: 760px;
-            font-size: 18px;
-            line-height: 1.8;
             color: var(--muted);
+            font-size: 17px;
+            line-height: 1.75;
         }
 
-        .hero-grid,
-        .grid {
-            display: grid;
-            gap: 18px;
+        .chips {
+            margin-top: 16px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
         }
 
-        .hero-grid {
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            margin-top: 28px;
-        }
-
-        .panel {
-            background: var(--paper);
+        .chip {
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: #eef4fb;
             border: 1px solid var(--line);
-            border-radius: 22px;
-            padding: 22px;
-            backdrop-filter: blur(6px);
-        }
-
-        .panel strong {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 16px;
+            color: #3d5571;
+            font-size: 13px;
+            font-weight: 600;
         }
 
         .section {
-            margin-top: 26px;
+            margin-top: 14px;
+            padding: 20px;
         }
 
         .section h2 {
-            margin: 0 0 14px;
+            margin: 0 0 12px;
             font-size: 24px;
         }
 
-        .section p,
-        .section li {
-            color: var(--muted);
-            line-height: 1.8;
-            font-size: 16px;
+        .grid-3 {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
         }
 
-        .grid {
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        }
-
-        .step-card {
-            background: rgba(255, 255, 255, 0.72);
+        .step {
+            background: #f2f6fb;
             border: 1px solid var(--line);
-            border-radius: 20px;
-            padding: 22px;
-            box-shadow: 0 10px 24px rgba(31, 41, 55, 0.05);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: var(--shadow-up), var(--shadow-down);
         }
 
         .step-no {
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #cf7f1e, #e3a34f);
+            color: #fff;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             font-weight: 800;
-            color: #fff;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, #d97706, #f59e0b);
+            margin-bottom: 10px;
         }
 
-        .step-card h3,
-        .mini-card h3 {
-            margin: 0 0 10px;
+        .step h3 {
+            margin: 0 0 8px;
             font-size: 18px;
         }
 
-        .mini-card {
-            background: rgba(255, 255, 255, 0.7);
+        .step p,
+        .faq-item p,
+        .section li {
+            margin: 0;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .status-demo {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 12px;
+            background: #eff4fa;
             border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 18px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
-        .hint {
-            border-left: 4px solid var(--green);
-            background: rgba(24, 121, 78, 0.08);
-            padding: 18px 18px 18px 20px;
-            border-radius: 16px;
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            padding: 7px 12px;
+            font-weight: 700;
+            font-size: 14px;
         }
 
-        .hint strong {
-            color: var(--green);
+        .pill.wait {
+            background: #e7edf4;
+            color: #4e6278;
         }
 
-        .faq {
+        .pill.ok {
+            background: var(--ok-soft);
+            color: #278659;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .settings-row {
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 15px;
+        }
+
+        .settings-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: var(--blue-soft);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow-up), var(--shadow-down);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: #365775;
+            position: relative;
+        }
+
+        .settings-btn::after {
+            content: "";
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            right: -2px;
+            top: -2px;
+            background: var(--ok);
+            border: 1px solid #edf2f8;
+        }
+
+        .faq-list {
             display: grid;
-            gap: 14px;
+            gap: 10px;
         }
 
         .faq-item {
-            background: rgba(255, 255, 255, 0.78);
+            background: #f2f6fb;
             border: 1px solid var(--line);
-            border-radius: 18px;
-            padding: 18px 20px;
+            border-radius: 12px;
+            padding: 12px 14px;
+            box-shadow: var(--shadow-up), var(--shadow-down);
         }
 
         .faq-item strong {
             display: block;
-            margin-bottom: 8px;
-            color: var(--blue);
+            margin-bottom: 6px;
+            color: #2d4d72;
         }
 
         .footer {
-            margin-top: 24px;
+            margin-top: 14px;
             text-align: center;
-            color: #7b6f63;
-            font-size: 14px;
+            color: #72839a;
+            font-size: 13px;
         }
 
-        @media (max-width: 680px) {
-            .shell {
-                width: min(100% - 20px, 100%);
-                padding: 22px 0 36px;
-            }
-
-            .hero {
-                padding: 24px;
-                border-radius: 22px;
-            }
-
-            h1 {
-                font-size: 34px;
-            }
-
-            .hero p,
-            .section p,
-            .section li {
-                font-size: 15px;
+        @media (max-width: 900px) {
+            .grid-3 {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -228,98 +261,73 @@
 <body>
     <main class="shell">
         <section class="hero">
-            <div class="eyebrow">语音输入同步 · 用户手册</div>
-            <h1>手机说话，电脑落字。</h1>
-            <p>这是一个把手机上的语音输入或文字输入，实时同步到电脑当前光标位置的小工具。它适合聊天、写回复、写文案、做搜索和轻量办公，重点是上手快，不折腾。</p>
-
-            <div class="hero-grid">
-                <div class="panel">
-                    <strong>你会看到什么</strong>
-                    一个中文绿色包，里面只有启动、说明、扫码页和用户手册，技术文件都收进了 <code>_runtime</code>。
-                </div>
-                <div class="panel">
-                    <strong>你需要准备什么</strong>
-                    手机和电脑在同一个 Wi-Fi，下手前先把电脑光标点到你要输入的位置。
-                </div>
-                <div class="panel">
-                    <strong>最常见的问题</strong>
-                    手机能打开页面，但电脑不打字。这种情况通常直接用管理员启动就能解决。
-                </div>
+            <span class="badge">语音输入同步 · 图文上手版</span>
+            <h1>先扫局域网，连上后回电脑点中输入框</h1>
+            <p>这是给普通用户的最短路径手册。目标是 30 秒可用，不让人猜、不让人绕路。</p>
+            <div class="chips">
+                <span class="chip">局域网优先</span>
+                <span class="chip">互联网备用</span>
+                <span class="chip">连接状态实时显示</span>
+                <span class="chip">设置按钮支持更新检查</span>
             </div>
         </section>
 
         <section class="section">
-            <h2>三步使用</h2>
-            <div class="grid">
-                <article class="step-card">
+            <h2>三步上手</h2>
+            <div class="grid-3">
+                <article class="step">
                     <div class="step-no">1</div>
-                    <h3>双击启动</h3>
-                    <p>双击 <code>双击启动语音输入同步.bat</code>。软件会先做一次自检，再自动启动后台服务，并准备扫码连接页，同时在桌面补一个快捷方式。</p>
+                    <h3>打开应用并扫码</h3>
+                    <p>双击桌面图标后，会自动出现扫码连接页。先扫“局域网直连”二维码。</p>
                 </article>
-                <article class="step-card">
+                <article class="step">
                     <div class="step-no">2</div>
-                    <h3>优先扫码连接</h3>
-                    <p>启动后电脑会自动打开 <code>手机扫码打开.html</code>。优先让手机扫一扫电脑上的二维码，不用再手工发链接。</p>
+                    <h3>等电脑变成已连接</h3>
+                    <p>手机打开页面后，电脑上的连接状态会自动从“未连接”变成“已连接”。</p>
+                    <div class="status-demo">
+                        <span class="pill wait"><span class="dot"></span>未连接</span>
+                        <span class="pill ok"><span class="dot"></span>已连接</span>
+                    </div>
                 </article>
-                <article class="step-card">
+                <article class="step">
                     <div class="step-no">3</div>
-                    <h3>开始输入</h3>
-                    <p>如果扫码不方便，再打开 <code>手机打开这个地址.txt</code> 看备用地址。进入手机页后，先把电脑光标点好，再开始输入。</p>
+                    <h3>回电脑点输入框</h3>
+                    <p>把光标点进你真正要输入的位置，再在手机端说话或打字即可同步。</p>
                 </article>
             </div>
         </section>
 
         <section class="section">
-            <h2>你会用到的几个文件</h2>
-            <div class="grid">
-                <div class="mini-card">
-                    <h3>双击启动语音输入同步.bat</h3>
-                    <p>正常情况下用这个启动就够了。</p>
-                </div>
-                <div class="mini-card">
-                    <h3>如果输入没反应-请用管理员启动.bat</h3>
-                    <p>当手机已经连接，但电脑端没有开始打字时，用这个入口重启。</p>
-                </div>
-                <div class="mini-card">
-                    <h3>手机扫码打开.html</h3>
-                    <p>启动后会自动生成并打开这个页面，里面有二维码和备用地址。</p>
-                </div>
-                <div class="mini-card">
-                    <h3>手机打开这个地址.txt</h3>
-                    <p>这里会写入手机实际要打开的备用地址，扫码不方便时再使用。</p>
-                </div>
-            </div>
-        </section>
-
-        <section class="section">
-            <h2>使用小技巧</h2>
-            <div class="hint">
-                <strong>先点光标，再说话。</strong>
-                这是用起来顺不顺的关键。这个工具不会替你决定把字打到哪里，它只负责把手机输入同步到电脑当前焦点位置。
+            <h2>设置与更新提示</h2>
+            <div class="settings-row">
+                <span class="settings-btn">⚙</span>
+                <span>扫码主界面右上角新增设置按钮。检测到新版本时，按钮右上会显示绿色提示点。</span>
             </div>
             <ul>
-                <li>适合微信、QQ、飞书聊天，也适合写评论、搜索、记笔记。</li>
-                <li>手机端页面里有清空、回车、空格、Tab 等按钮，适合边说边修。</li>
-                <li>启动后优先扫码，是这次最推荐的使用方式，动作最少。</li>
-                <li>如果你用的是公司电脑或权限较严的机器，优先试管理员启动。</li>
+                <li>点击设置可“立即检查”或“打开下载页”。</li>
+                <li>如果你当前使用稳定，完全可以不更新，继续使用也没问题。</li>
             </ul>
         </section>
 
         <section class="section">
-            <h2>常见问题</h2>
-            <div class="faq">
-                <div class="faq-item">
-                    <strong>手机打不开地址怎么办？</strong>
-                    <span>先确认手机和电脑在同一个 Wi-Fi 或同一个局域网里。优先扫电脑上的二维码；如果还是不方便，再以 <code>手机打开这个地址.txt</code> 里的最新地址为准。</span>
-                </div>
-                <div class="faq-item">
-                    <strong>手机页面显示已连接，但电脑没有打字怎么办？</strong>
-                    <span>大概率是键盘模拟权限不够。先把电脑光标点进输入框，再使用 <code>如果输入没反应-请用管理员启动.bat</code>。</span>
-                </div>
+            <h2>常见问题（FAQ）</h2>
+            <div class="faq-list">
+                <article class="faq-item">
+                    <strong>Q1：手机能打开页面，但电脑没输入？</strong>
+                    <p>先回电脑点中目标输入框，再输入。多数情况都是焦点不在目标输入框。</p>
+                </article>
+                <article class="faq-item">
+                    <strong>Q2：局域网地址打不开？</strong>
+                    <p>确认手机和电脑在同一网络；如果还不通，直接切到“互联网地址”作为备用入口。</p>
+                </article>
+                <article class="faq-item">
+                    <strong>Q3：我只自己用，还需要更新吗？</strong>
+                    <p>不强制。能稳定使用就先不动；需要新功能或修复时再更新最省心。</p>
+                </article>
             </div>
         </section>
 
-        <p class="footer">如果你只是第一次上手，先看同目录里的“先看这里.txt”，再扫“手机扫码打开.html”会最快。</p>
+        <p class="footer">语音输入同步 · 用户手册（图文版）</p>
     </main>
 </body>
 </html>
